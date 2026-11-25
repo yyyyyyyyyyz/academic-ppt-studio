@@ -1,13 +1,3 @@
----
-title: Academic PPT Studio
-emoji: 🧬
-colorFrom: red
-colorTo: indigo
-sdk: docker
-app_port: 7860
-pinned: false
----
-
 # Academic PPT Design Studio & `academic-ppt-design` Skill (v4.0)
 
 > **通用、跨学科、自由页数（3–30+ 页）的专业学术 PPT 生成系统与开源 Agent Skill** —— 以**顶刊美编级科研绘图（One Slide, One Dedicated Publication-Grade Scientific Figure）**为第一优先级，输出 **100% 原子级图/文全分离、原生可编辑、零填充去框**的 `.pptx` 文件。

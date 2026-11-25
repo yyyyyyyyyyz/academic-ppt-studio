@@ -1,0 +1,19 @@
+services:
+  academic-ppt-studio:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: academic-ppt-studio
+    restart: unless-stopped
+    ports:
+      - "80:8080"
+    environment:
+      - PORT=8080
+      - LLM_PROVIDER_MODE=${LLM_PROVIDER_MODE:-auto}
+      - FIGURE_PROVIDER_MODE=${FIGURE_PROVIDER_MODE:-local}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
+      - OPENAI_TEXT_MODEL=${OPENAI_TEXT_MODEL:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - DECK_TTL_HOURS=${DECK_TTL_HOURS:-24}
+      - MAX_UPLOAD_MB=${MAX_UPLOAD_MB:-20}

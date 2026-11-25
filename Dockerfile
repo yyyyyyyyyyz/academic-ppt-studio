@@ -40,13 +40,13 @@ ENV PYTHONUNBUFFERED=1 \
     FIGURE_PROVIDER_MODE=local \
     DECK_TTL_HOURS=24 \
     MAX_UPLOAD_MB=20 \
-    PORT=7860
+    PORT=8080
 
 USER 1000
 
 # Pre-build the 4-slide Nature Editorial specimen plates into /app/artifacts at image build time
 RUN python /app/backend/docker_entrypoint.py --init-only
 
-EXPOSE 7860 8000
+EXPOSE 8080
 
 CMD ["python", "/app/backend/docker_entrypoint.py"]
