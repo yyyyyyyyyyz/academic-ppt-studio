@@ -123,6 +123,8 @@ export interface FigureAsset {
   heteroatom_theme_sync: boolean;
   drug_burgundy: boolean;
   chem_style?: string;
+  style_3d?: string;
+  show_nonpolar_h?: boolean | null;
   rotation_deg: number[];
   outline_stroke: string;
   preset?: string | null;

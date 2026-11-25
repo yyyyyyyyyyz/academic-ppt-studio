@@ -240,49 +240,12 @@ class ArtDirectorAgent:
     def _choose_archetype_and_preset(self, slide: SlideSpec, is_proposal: bool, content_index: int) -> tuple[ArchetypeId, Optional[str], Optional[str]]:
         txt = f"{slide.section_name} {slide.title} {slide.takeaway}".lower()
 
-        if any(k in txt for k in ("路线", "roadmap", "方案", "设计", "workflow")):
-            return (ArchetypeId.A10, None, "roadmap_4stage")
-        if any(k in txt for k in ("空白", "进展", "gap", "现状", "综述", "分类")):
-            return (ArchetypeId.A10, None, "gap_quadrant") if "空白" in txt or "gap" in txt else (ArchetypeId.A09, None, "sunburst_pathway")
-        if any(k in txt for k in ("团聚", "分散", "稳定", "dispersion", "烧结")):
-            return (ArchetypeId.A02, None, None)
-        if any(k in txt for k in ("压电", "光催", "声", "外场", "piezo", "photo")):
-            return (ArchetypeId.A03, None, None)
-        if any(k in txt for k in ("立体", "配合物", "构象", "对接", "口袋", "变构", "3d", "cylview")):
+        if any(k in txt for k in ("3d", "立体", "构象", "对接", "口袋", "球棍", "建模", "cylview")):
             return (ArchetypeId.A04, None, None)
-        if any(k in txt for k in ("合成", "背景", "痛点", "药", "抑制剂", "骨架", "先导", "sar", "构效", "底物", "chemdraw", "c–n")):
+        if any(k in txt for k in ("2d", "chemdraw", "合成", "先导", "抑制剂", "骨架", "结构", "底物")):
             return (ArchetypeId.A05, None, None) if content_index % 2 == 0 else (ArchetypeId.A04, None, None)
-        if any(k in txt for k in ("循环", "机理", "催化", "能垒", "自由基", "降解", "途径")):
-            return (ArchetypeId.A10, None, "pd_coupling_cycle") if any(k in txt for k in ("偶联", "pd", "循环")) else (ArchetypeId.A10, None, "molecular_3d_pathway")
-        if any(k in txt for k in ("晶面", "vesta", "双电层", "界面")):
-            return (ArchetypeId.A07, None, None)
-        if any(k in txt for k in ("总结", "展望", "outlook", "summary")):
-            return (ArchetypeId.A10, None, "roadmap_4stage")
 
-        # Quantitative data routing (blocked if proposal without verified data)
-        if not is_proposal:
-            if any(k in txt for k in ("xps", "谱学", "价态")):
-                return (ArchetypeId.A06, "xps_deconv", None)
-            if any(k in txt for k in ("电化学", "lsv", "tafel", "过电位")):
-                return (ArchetypeId.A06, "electrochem_suite", None)
-            if any(k in txt for k in ("dft", "自由能", "吸附")):
-                return (ArchetypeId.A06, "dft_energy_profile", None)
-            if any(k in txt for k in ("ml", "机器学习", "预测")):
-                return (ArchetypeId.A06, "ml_parity_kde", None)
-            if any(k in txt for k in ("动力学", "收率", "绿色度", "pmi", "定量", "效率")):
-                return (ArchetypeId.A06, "nature_grouped_bar", None)
-
-        # Deterministic professional engine rotation (ChemDraw, PyMOL 3D, OriginPro, VectorMech)
-        rotation = [
-            (ArchetypeId.A05, None, None),
-            (ArchetypeId.A04, None, None),
-            (ArchetypeId.A10, None, "roadmap_4stage"),
-            (ArchetypeId.A10, None, "molecular_3d_pathway"),
-            (ArchetypeId.A06 if not is_proposal else ArchetypeId.A10, "nature_grouped_bar", "delta_g_concept"),
-            (ArchetypeId.A10, None, "gap_quadrant"),
-            (ArchetypeId.A09, None, "sunburst_pathway"),
-        ]
-        return rotation[content_index % len(rotation)]
+        return (ArchetypeId.A05, None, None) if content_index % 2 == 0 else (ArchetypeId.A04, None, None)
 
     def _choose_v5_layout(self, slide: SlideSpec, is_proposal: bool, content_index: int) -> LayoutId:
         if slide.table_data is not None:
@@ -531,5 +494,15 @@ class ArtDirectorAgent:
                     if ast.engine == EngineType.chemdraw_rdkit:
                         ast.chem_style = chem_style
                         ast.drug_burgundy = chem_style == "nature_burgundy"
+            else:
+                _styles_2d = ["acs1996", "shaded_scaffold", "nature_burgundy", "jacs_terracotta"]
+                _styles_3d = ["ball_stick", "stick_clean", "pymol_neon_green", "metallic_studio"]
+                for ast in fig_spec.assets:
+                    if ast.engine == EngineType.chemdraw_rdkit:
+                        chosen_2d = _styles_2d[content_index % len(_styles_2d)]
+                        ast.chem_style = chosen_2d
+                        ast.drug_burgundy = chosen_2d == "nature_burgundy"
+                    elif ast.engine == EngineType.cylview_3d:
+                        ast.style_3d = _styles_3d[content_index % len(_styles_3d)]
         slide.figure_spec = fig_spec
         return slide

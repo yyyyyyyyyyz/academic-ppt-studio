@@ -124,6 +124,7 @@ class ScientificFigureFactory:
                 outline_stroke=asset.outline_stroke or "#4A4A4A",
                 rotation_deg=asset.rotation_deg,
                 show_nonpolar_h=asset.show_nonpolar_h,
+                style_3d=asset.style_3d or "ball_stick",
             )
             asset.png_path = str(res.png_path)
             asset.sdf_path = str(res.sdf_path) if res.sdf_path else None

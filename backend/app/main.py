@@ -636,6 +636,12 @@ def api_figures_select_or_refine(req: SelectOrRefineFigureRequest, request: Requ
         if req.chem_style_override:
             asset.chem_style = req.chem_style_override
             asset.drug_burgundy = req.chem_style_override == "nature_burgundy"
+        if req.style_3d_override:
+            asset.style_3d = req.style_3d_override
+        if req.rotation_deg_override is not None:
+            asset.rotation_deg = [float(x) for x in req.rotation_deg_override[:3]]
+        if req.show_nonpolar_h_override is not None:
+            asset.show_nonpolar_h = req.show_nonpolar_h_override
         if req.origin_preset:
             asset.preset = req.origin_preset
         if req.render_mode:

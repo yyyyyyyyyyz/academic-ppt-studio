@@ -70,22 +70,49 @@ def _visible_atom_mask(mol: Chem.Mol, show_nonpolar_h: Optional[bool] = None) ->
     return mask
 
 
-def _atom_color(atomic_num: int, palette: ScientificPalette) -> np.ndarray:
+def _atom_color(atomic_num: int, palette: ScientificPalette, style_3d: str = "ball_stick") -> np.ndarray:
+    style = (style_3d or "ball_stick").lower()
+    if style == "pymol_neon_green":
+        carbon_col = (58, 224, 72)
+        nitrogen_col = (68, 108, 255)
+        oxygen_col = (252, 68, 68)
+        hydrogen_col = (248, 250, 252)
+    elif style == "stick_clean":
+        carbon_col = (82, 146, 166)
+        nitrogen_col = hex_to_rgb(palette.s1)
+        oxygen_col = (212, 36, 48)
+        hydrogen_col = (244, 246, 250)
+    elif style == "spacefill_cpk":
+        carbon_col = (92, 96, 104)
+        nitrogen_col = (48, 92, 212)
+        oxygen_col = (220, 40, 46)
+        hydrogen_col = (245, 245, 245)
+    elif style == "metallic_studio":
+        carbon_col = (164, 172, 184)
+        nitrogen_col = hex_to_rgb(palette.s1)
+        oxygen_col = hex_to_rgb(palette.alert)
+        hydrogen_col = (240, 244, 248)
+    else:
+        carbon_col = (104, 116, 130)
+        nitrogen_col = hex_to_rgb(palette.s1)
+        oxygen_col = (212, 36, 48)
+        hydrogen_col = (246, 248, 252)
+
     base = {
-        1: (246, 248, 252),       # Crisp pearl H
-        6: (104, 116, 130),       # PyMOL metallic slate C
-        7: hex_to_rgb(palette.s1),  # Cobalt/theme N
-        8: (212, 36, 48),         # Crisp ruby O
-        9: (22, 174, 152),        # Luminous emerald-teal F
-        15: (224, 130, 44),       # Amber P
-        16: (226, 186, 52),       # Sulfur yellow
-        17: (46, 168, 92),        # Chlorine green
-        35: (146, 48, 36),        # Dark brown Br
-        53: (116, 46, 142),       # Violet I
+        1: hydrogen_col,
+        6: carbon_col,
+        7: nitrogen_col,
+        8: oxygen_col,
+        9: (22, 174, 152),
+        15: (224, 130, 44),
+        16: (226, 186, 52),
+        17: (46, 168, 92),
+        35: (146, 48, 36),
+        53: (116, 46, 142),
     }
     if atomic_num in base:
         return np.array(base[atomic_num], dtype=np.float32)
-    return np.array(hex_to_rgb(palette.s1), dtype=np.float32)
+    return np.array(nitrogen_col, dtype=np.float32)
 
 
 def _embed_and_align(smiles: str, rotation_deg: Sequence[float] = (0.0, 0.0, 0.0)) -> Tuple[Chem.Mol, np.ndarray]:
@@ -144,6 +171,8 @@ def _shade_surface(
     outline_rgb: np.ndarray,
     rim_width: float = 0.25,
     depth_t: Optional[np.ndarray] = None,
+    spec_power: float = 56.0,
+    spec_weight: float = 0.64,
 ) -> np.ndarray:
     """Apply CYLview/PyMOL studio lighting + glossy Phong specular + subtle depth cueing + contour rim."""
     k = np.array([-0.50, -0.58, 0.64], dtype=np.float32)
@@ -155,11 +184,11 @@ def _shade_surface(
 
     diff_k = np.maximum(0.0, nx * k[0] + ny * k[1] + nz * k[2])
     diff_f = np.maximum(0.0, nx * f[0] + ny * f[1] + nz * f[2])
-    spec = np.maximum(0.0, nx * h_vec[0] + ny * h_vec[1] + nz * h_vec[2]) ** 56
+    spec = np.maximum(0.0, nx * h_vec[0] + ny * h_vec[1] + nz * h_vec[2]) ** spec_power
 
     ambient = 0.26 + 0.14 * np.maximum(0.0, nz)
     shade = ambient + 0.66 * diff_k + 0.22 * diff_f
-    rgb = base_rgb[None, :] * shade[:, None] + np.array([255.0, 255.0, 255.0], dtype=np.float32)[None, :] * (0.64 * spec[:, None])
+    rgb = base_rgb[None, :] * shade[:, None] + np.array([255.0, 255.0, 255.0], dtype=np.float32)[None, :] * (spec_weight * spec[:, None])
 
     if depth_t is not None:
         fog = (1.0 - np.clip(depth_t, 0.0, 1.0)) * 0.14
@@ -218,23 +247,32 @@ def _try_render_pymol_raytrace(
     width: int = 960,
     height: int = 720,
     dpi: int = 300,
+    style_3d: str = "ball_stick",
 ) -> bool:
     """Invoke headless PyMOL ray tracing when `pymol` CLI is installed in Linux container."""
     pymol_bin = shutil.which("pymol")
     if not pymol_bin:
         return False
     pml_path = out_png.with_suffix(".pml")
+    style = (style_3d or "ball_stick").lower()
+    if style == "stick_clean":
+        rep_cmds = ["show sticks, lig", "set stick_radius, 0.22", "util.cbac lig"]
+    elif style == "spacefill_cpk":
+        rep_cmds = ["show spheres, lig", "set sphere_scale, 0.92", "util.cbaw lig"]
+    elif style == "pymol_neon_green":
+        rep_cmds = ["show sticks, lig", "show spheres, lig", "set stick_radius, 0.17", "set sphere_scale, 0.29", "util.cbag lig"]
+    elif style == "metallic_studio":
+        rep_cmds = ["show sticks, lig", "show spheres, lig", "set stick_radius, 0.16", "set sphere_scale, 0.28", "set spec_reflect, 1.0", "set spec_power, 200", "util.cbaw lig"]
+    else:
+        rep_cmds = ["show sticks, lig", "show spheres, lig", "set stick_radius, 0.16", "set sphere_scale, 0.27", "util.cbaw lig"]
+
     script = "\n".join([
         f"load {sdf_path.resolve()}, lig",
         "bg_color white",
         "set ray_opaque_background, 0",
         "hide everything",
-        "show sticks, lig",
-        "show spheres, lig",
-        "set stick_radius, 0.16",
-        "set sphere_scale, 0.27",
+        *rep_cmds,
         "set valence, 1",
-        "util.cbaw lig",
         "set antialias, 2",
         "set ambient, 0.35",
         "set spec_reflect, 0.85",
@@ -269,9 +307,19 @@ def render_cylview3d(
     target_width_px: int = 860,
     dpi: int = 600,
     show_nonpolar_h: Optional[bool] = None,
+    style_3d: str = "ball_stick",
 ) -> CYLviewRenderResult:
-    """Render deterministic ETKDGv3+MMFF94 3D ball-and-stick PNG, export .sdf, using PyMOL ray-trace if installed."""
+    """Render deterministic ETKDGv3+MMFF94 3D conformer PNG, export .sdf, using PyMOL ray-trace if installed."""
     palette = get_palette(palette_id)
+    style = (style_3d or "ball_stick").lower()
+    style_cfg = {
+        "ball_stick": {"sphere_mult": 1.0, "bond_mult": 1.0, "draw_bonds": True, "rim_w": 0.24, "spec_power": 56.0, "spec_weight": 0.64},
+        "stick_clean": {"sphere_mult": 0.40, "bond_mult": 1.35, "draw_bonds": True, "rim_w": 0.16, "spec_power": 48.0, "spec_weight": 0.58},
+        "spacefill_cpk": {"sphere_mult": 2.25, "bond_mult": 0.0, "draw_bonds": False, "rim_w": 0.20, "spec_power": 42.0, "spec_weight": 0.55},
+        "pymol_neon_green": {"sphere_mult": 1.04, "bond_mult": 1.05, "draw_bonds": True, "rim_w": 0.20, "spec_power": 70.0, "spec_weight": 0.72},
+        "metallic_studio": {"sphere_mult": 1.02, "bond_mult": 1.02, "draw_bonds": True, "rim_w": 0.26, "spec_power": 96.0, "spec_weight": 0.88},
+    }.get(style, {"sphere_mult": 1.0, "bond_mult": 1.0, "draw_bonds": True, "rim_w": 0.24, "spec_power": 56.0, "spec_weight": 0.64})
+
     resolved_smiles = resolve_compound_smiles(smiles) or smiles
     mol, coords = _embed_and_align(resolved_smiles, rotation_deg=rotation_deg)
     vis = _visible_atom_mask(mol, show_nonpolar_h)
@@ -284,7 +332,7 @@ def render_cylview3d(
     writer.write(mol)
     writer.close()
 
-    if _try_render_pymol_raytrace(sdf_p, out_p, width=max(720, target_width_px), height=max(540, int(target_width_px * 0.75)), dpi=min(dpi, 300)):
+    if _try_render_pymol_raytrace(sdf_p, out_p, width=max(720, target_width_px), height=max(540, int(target_width_px * 0.75)), dpi=min(dpi, 300), style_3d=style):
         with Image.open(out_p) as py_img:
             pw, ph = py_img.size
         return CYLviewRenderResult(
@@ -294,16 +342,17 @@ def render_cylview3d(
             pixel_height=ph,
             atom_count=int(vis.sum()),
             bond_count=vis_bonds,
-            method="PyMOL+RayTrace",
+            method=f"PyMOL+RayTrace({style})",
             sdf_path=sdf_p,
         )
 
-    outline_rgb = np.array(hex_to_rgb(outline_stroke), dtype=np.float32)
+    eff_outline = "#1E262E" if style == "pymol_neon_green" else outline_stroke
+    outline_rgb = np.array(hex_to_rgb(eff_outline), dtype=np.float32)
 
     supersample = 2
     ss_w = target_width_px * supersample
-    radii = np.array([_ATOM_RADII_A.get(a.GetAtomicNum(), 0.36) for a in mol.GetAtoms()], dtype=np.float32)
-    colors = np.array([_atom_color(a.GetAtomicNum(), palette) for a in mol.GetAtoms()], dtype=np.float32)
+    radii = np.array([_ATOM_RADII_A.get(a.GetAtomicNum(), 0.36) for a in mol.GetAtoms()], dtype=np.float32) * float(style_cfg["sphere_mult"])
+    colors = np.array([_atom_color(a.GetAtomicNum(), palette, style_3d=style) for a in mol.GetAtoms()], dtype=np.float32)
 
     vis_coords = coords[vis]
     vis_radii = radii[vis]
@@ -337,9 +386,9 @@ def render_cylview3d(
     z_buf = np.full((ss_h, ss_w), -1e9, dtype=np.float32)
 
     # 1. Rasterize half-cylinder bonds with analytic ray-cylinder intersection (visible atoms only)
-    bond_r = float(0.128 * scale)
+    bond_r = float(0.128 * float(style_cfg["bond_mult"]) * scale)
     vis_bonds = 0
-    for bond in mol.GetBonds():
+    for bond in (mol.GetBonds() if style_cfg["draw_bonds"] else []):
         i1 = bond.GetBeginAtomIdx()
         i2 = bond.GetEndAtomIdx()
         if not (vis[i1] and vis[i2]):
@@ -413,7 +462,8 @@ def render_cylview3d(
             dt = (z_vals[vis_hit] - z_min) / z_span
             shaded = _shade_surface(
                 nx_h[vis_hit], ny_h[vis_hit], nz_h[vis_hit],
-                base_rgb=seg_col, outline_rgb=outline_rgb, rim_width=0.22, depth_t=dt
+                base_rgb=seg_col, outline_rgb=outline_rgb, rim_width=float(style_cfg["rim_w"]) * 0.9, depth_t=dt,
+                spec_power=float(style_cfg["spec_power"]), spec_weight=float(style_cfg["spec_weight"]),
             )
             hy, hx = np.where(hit)
             vy = hy[vis_hit] + y0
@@ -454,7 +504,8 @@ def render_cylview3d(
         dt = (z_vals[vis_hit] - z_min) / z_span
         shaded = _shade_surface(
             dx[hit][vis_hit], dy[hit][vis_hit], nz[vis_hit],
-            base_rgb=col, outline_rgb=outline_rgb, rim_width=0.24, depth_t=dt
+            base_rgb=col, outline_rgb=outline_rgb, rim_width=float(style_cfg["rim_w"]), depth_t=dt,
+            spec_power=float(style_cfg["spec_power"]), spec_weight=float(style_cfg["spec_weight"]),
         )
         hy, hx = np.where(hit)
         vy = hy[vis_hit] + y0

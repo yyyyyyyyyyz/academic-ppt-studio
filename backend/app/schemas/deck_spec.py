@@ -182,6 +182,7 @@ class FigureAsset(BaseModel):
     heteroatom_theme_sync: bool = True
     drug_burgundy: bool = False
     chem_style: str = "acs1996"
+    style_3d: str = "ball_stick"
     rotation_deg: List[float] = Field(default_factory=lambda: [0.0, 0.0, 0.0])
     outline_stroke: str = "#4A4A4A"
 
@@ -358,6 +359,9 @@ class SelectOrRefineFigureRequest(BaseModel):
     render_mode: Optional[str] = None
     mech_mode_override: Optional[str] = None
     chem_style_override: Optional[str] = None
+    style_3d_override: Optional[str] = None
+    rotation_deg_override: Optional[List[float]] = None
+    show_nonpolar_h_override: Optional[bool] = None
 
 
 class PaletteApplyRequest(BaseModel):

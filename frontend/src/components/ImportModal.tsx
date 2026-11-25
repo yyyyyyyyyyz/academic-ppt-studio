@@ -1,5 +1,4 @@
 import React, { useRef, useState } from "react";
-import { FileUp, Sliders, ShieldAlert, X } from "lucide-react";
 import { COVER_TEMPLATE_OPTIONS } from "../types/deckSpec";
 import type { CoverTemplateId, DesignStyle, PaletteInfo, ScenarioType } from "../types/deckSpec";
 
@@ -28,90 +27,67 @@ interface ImportModalProps {
 const CoverMiniPreview: React.FC<{ id: CoverTemplateId; color: string; tint: string }> = ({ id, color, tint }) => {
   if (id === "hero_band_bottom_bar") {
     return (
-      <svg viewBox="0 0 80 45" style={{ width: "100%", height: 42, display: "block", border: "1px solid #E2E0D8", background: "#FFFFFF" }}>
+      <svg viewBox="0 0 80 45" style={{ width: "100%", height: 38, display: "block", border: "1px solid #E2E0D8", background: "#FFFFFF" }}>
         <rect x="0" y="0" width="80" height="33" fill={color} />
         <rect x="0" y="33" width="80" height="2" fill={tint} />
-        <circle cx="32" cy="8" r="2.5" stroke="#FFFFFF" strokeWidth="0.9" fill="none" />
-        <rect x="37" y="7" width="12" height="2" rx="1" fill="#FFFFFF" opacity="0.9" />
-        <rect x="16" y="14" width="48" height="4" rx="1" fill="#FFFFFF" />
-        <rect x="24" y="21" width="32" height="2" rx="1" fill="#FFFFFF" opacity="0.7" />
-        <circle cx="20" cy="40" r="2.2" fill={color} />
-        <circle cx="40" cy="40" r="2.2" fill={color} />
-        <circle cx="60" cy="40" r="2.2" fill={color} />
+        <rect x="16" y="13" width="48" height="4" rx="1" fill="#FFFFFF" />
+        <rect x="24" y="20" width="32" height="2" rx="1" fill="#FFFFFF" opacity="0.7" />
+        <circle cx="20" cy="40" r="2" fill={color} />
+        <circle cx="40" cy="40" r="2" fill={color} />
+        <circle cx="60" cy="40" r="2" fill={color} />
       </svg>
     );
   }
   if (id === "top_bottom_bands_framed") {
     return (
-      <svg viewBox="0 0 80 45" style={{ width: "100%", height: 42, display: "block", border: "1px solid #E2E0D8", background: "#FFFFFF" }}>
+      <svg viewBox="0 0 80 45" style={{ width: "100%", height: 38, display: "block", border: "1px solid #E2E0D8", background: "#FFFFFF" }}>
         <rect x="0" y="0" width="80" height="8" fill={color} />
         <rect x="0" y="37" width="80" height="8" fill={color} />
-        <polygon points="40,12 51,18 51,28 40,34 29,28 29,18" fill={tint} opacity="0.45" />
-        <rect x="18" y="15" width="44" height="4" rx="1" fill={color} />
-        <rect x="26" y="21" width="28" height="1.8" rx="0.9" fill="#64748B" />
-        <rect x="10" y="29" width="18" height="4.5" rx="2" fill="#FFFFFF" stroke={color} strokeWidth="0.7" />
-        <rect x="31" y="29" width="18" height="4.5" rx="2" fill="#FFFFFF" stroke={color} strokeWidth="0.7" />
-        <rect x="52" y="29" width="18" height="4.5" rx="2" fill="#FFFFFF" stroke={color} strokeWidth="0.7" />
+        <rect x="18" y="16" width="44" height="4" rx="1" fill={color} />
+        <rect x="26" y="22" width="28" height="1.8" rx="0.9" fill="#64748B" />
       </svg>
     );
   }
   if (id === "floating_rounded_hero_card") {
     return (
-      <svg viewBox="0 0 80 45" style={{ width: "100%", height: 42, display: "block", border: "1px solid #E2E0D8", background: "#FFFFFF" }}>
+      <svg viewBox="0 0 80 45" style={{ width: "100%", height: 38, display: "block", border: "1px solid #E2E0D8", background: "#FFFFFF" }}>
         <rect x="5" y="33" width="70" height="3.5" rx="1.5" fill={tint} />
         <rect x="3" y="3" width="74" height="31.5" rx="3" fill={color} />
-        <rect x="7" y="7" width="12" height="3" rx="1.5" fill="#FFFFFF" />
         <rect x="7" y="14" width="44" height="4" rx="1" fill="#FFFFFF" />
         <rect x="7" y="20" width="32" height="2" rx="1" fill="#FFFFFF" opacity="0.7" />
-        <circle cx="62" cy="21" r="8" stroke="#FFFFFF" strokeOpacity="0.22" strokeWidth="1.5" fill="none" />
-        <rect x="23" y="39" width="3.5" height="3.5" rx="0.8" fill={color} />
-        <rect x="44" y="39" width="3.5" height="3.5" rx="0.8" fill={color} />
       </svg>
     );
   }
   if (id === "left_aligned_rounded_panel") {
     return (
-      <svg viewBox="0 0 80 45" style={{ width: "100%", height: 42, display: "block", border: "1px solid #E2E0D8", background: "#FFFFFF" }}>
+      <svg viewBox="0 0 80 45" style={{ width: "100%", height: 38, display: "block", border: "1px solid #E2E0D8", background: "#FFFFFF" }}>
         <rect x="2" y="2" width="76" height="33" rx="2.5" fill={color} />
-        <circle cx="64" cy="18.5" r="11" stroke="#FFFFFF" strokeOpacity="0.18" strokeWidth="1.5" fill="none" />
-        <rect x="6" y="10" width="22" height="2.2" rx="1" fill="#FFFFFF" opacity="0.8" />
         <rect x="6" y="15" width="44" height="4" rx="1" fill="#FFFFFF" />
         <rect x="6" y="21" width="34" height="2" rx="1" fill="#FFFFFF" opacity="0.7" />
-        <rect x="6" y="27" width="16" height="3.5" rx="1.7" fill="#FFFFFF" />
-        <rect x="6" y="38" width="18" height="3" rx="0.8" fill="#CBD5E1" />
-        <rect x="54" y="39" width="20" height="2" rx="0.8" fill="#CBD5E1" />
       </svg>
     );
   }
   return (
-    <svg viewBox="0 0 80 45" style={{ width: "100%", height: 42, display: "block", border: "1px solid #E2E0D8", background: "#FFFFFF" }}>
-      <polygon points="0,30 40,35 80,30 80,32 40,37 0,32" fill={tint} />
+    <svg viewBox="0 0 80 45" style={{ width: "100%", height: 38, display: "block", border: "1px solid #E2E0D8", background: "#FFFFFF" }}>
       <polygon points="0,0 80,0 80,30 40,35 0,30" fill={color} />
-      <rect x="18" y="9" width="44" height="4" rx="1" fill="#FFFFFF" />
-      <rect x="26" y="15" width="28" height="2" rx="1" fill="#FFFFFF" opacity="0.75" />
-      <rect x="10" y="22" width="18" height="4" rx="2" fill="#FFFFFF" />
-      <rect x="31" y="22" width="18" height="4" rx="2" fill="#FFFFFF" />
-      <rect x="52" y="22" width="18" height="4" rx="2" fill="#FFFFFF" />
-      <circle cx="31" cy="40" r="2.2" stroke={color} strokeWidth="0.9" fill="none" />
-      <rect x="35" y="39" width="18" height="2.2" rx="1" fill={color} />
+      <rect x="18" y="10" width="44" height="4" rx="1" fill="#FFFFFF" />
+      <rect x="26" y="16" width="28" height="2" rx="1" fill="#FFFFFF" opacity="0.75" />
     </svg>
   );
 };
 
-const SAMPLE_OUTLINE = `# 无溶剂球磨介导非贵金属催化 C–N 交叉偶联机制研究
-## 1. 研究背景与痛点立题
-传统均相偶联需要大量高毒极性溶剂且难以回收。开发固相机械化学与分子筛限域协同催化策略可显著降低过程质量强度（PMI）。
-## 2. 科学问题与研究空白
-传统金属纳米粒子在无溶剂球磨下极易团聚失活，且副产水分子抑制活性中心循环。
-## 3. 总体技术路线
-设计“无溶剂剪切—孔道限域锁水—原位谱学表征—放大验证”四阶段闭环方案。
-## 4. 催化循环与分子机理
-SMILES: CN(C)CCN(Cc1ccccc1)c2ccccn2
-双功能活性中心调控电荷转移与 C–N 偶联活化能垒。
-## 5. 定量动力学与多维度表征
-分离收率提升至 91.2%，PMI 降幅达 -91.7%，XPS 证实高价 Ni 位点稳定。
-## 6. 总结与展望
-构建跨尺度绿色制药合成通用范式。`;
+const SAMPLE_OUTLINE = `# EGFR C797S 变构抑制剂设计与成药性研究
+## 1. 研究背景与耐药痛点
+第三代共价抑制剂诱发 C797S 耐药突变，亟需新型非共价变构抑制剂。
+SMILES: COc1cc(N(C)CCN(C)C)c(NC(=O)C=C)cc1Nc2nccc(n2)c3cn(C)c4ccccc34
+## 2. 先导结构优化（2D 结构）
+引入吗啉极性侧链优化脂水分配系数（cLogP = 3.1），满足 Lipinski 规则。
+SMILES: COc1cc2ncnc(Nc3ccc(F)c(Cl)c3)c2cc1OCCCN4CCOCC4
+## 3. 3D 构象与结合模式（3D 球棍）
+吲哚核心与铰链区形成双齿氢键，吗啉尾链深入溶剂区。
+SMILES: Cc1nc(Nc2ncc(s2)C(=O)Nc3c(C)cccc3Cl)cc(n1)N4CCN(CCO)CC4
+## 4. 总结与展望
+明确后续安全性筛选与成药优化方向。`;
 
 export const ImportModal: React.FC<ImportModalProps> = ({
   open,
@@ -121,13 +97,13 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   onPlanText,
   onPlanFile,
 }) => {
-  const [deckTitle, setDeckTitle] = useState("无溶剂球磨催化 C–N 偶联绿色合成研究");
-  const [author, setAuthor] = useState("药物化学研究生");
-  const [affiliation, setAffiliation] = useState("药学院计算与合成实验室");
+  const [deckTitle, setDeckTitle] = useState("EGFR 抑制剂先导化合物研究汇报");
+  const [author, setAuthor] = useState("汇报人");
+  const [affiliation, setAffiliation] = useState("药学院实验室");
   const [advisor, setAdvisor] = useState("");
   const [dateStr, setDateStr] = useState("2026 年 11 月");
   const [scenario, setScenario] = useState<ScenarioType>("defense");
-  const [slideCount, setSlideCount] = useState<number>(8);
+  const [slideCount, setSlideCount] = useState<number>(6);
   const [paletteId, setPaletteId] = useState<string>("lancet");
   const [designStyle, setDesignStyle] = useState<DesignStyle>("defense_modular");
   const [coverTemplate, setCoverTemplate] = useState<CoverTemplateId>("hero_band_bottom_bar");
@@ -196,7 +172,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
         className="editorial-fade-in"
         style={{
           width: "100%",
-          maxWidth: 840,
+          maxWidth: 820,
           maxHeight: "92vh",
           overflowY: "auto",
           background: "var(--surface-pure)",
@@ -211,48 +187,43 @@ export const ImportModal: React.FC<ImportModalProps> = ({
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            padding: "16px 24px",
+            padding: "14px 20px",
             borderBottom: "1px solid var(--rule-strong)",
             background: "var(--surface-pure)",
           }}
         >
-          <div>
-            <div className="kicker" style={{ color: "var(--nature-crimson)", marginBottom: 3 }}>
-              NEW MANUSCRIPT · DECK PLANNER
-            </div>
-            <div className="font-serif" style={{ fontSize: 19, fontWeight: 700, color: "var(--ink-primary)" }}>
-              新建学术汇报 / 导入论文手稿
-            </div>
+          <div className="font-serif" style={{ fontSize: 18, fontWeight: 700, color: "var(--ink-primary)" }}>
+            新建 / 导入
           </div>
           <button
             type="button"
             onClick={onClose}
-            style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--ink-secondary)", padding: 4 }}
+            style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--ink-secondary)", fontSize: 20, lineHeight: 1, padding: 4 }}
           >
-            <X size={20} />
+            ×
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
+        <form onSubmit={handleSubmit} style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1.3fr 0.75fr 0.9fr 0.7fr 0.65fr", gap: 10 }}>
             <label style={{ fontSize: 12 }}>
-              <div style={{ fontWeight: 600, marginBottom: 5, color: "var(--ink-secondary)" }}>汇报标题</div>
+              <div style={{ fontWeight: 600, marginBottom: 4, color: "var(--ink-secondary)" }}>标题</div>
               <input className="editorial-input" value={deckTitle} onChange={(e) => setDeckTitle(e.target.value)} />
             </label>
             <label style={{ fontSize: 12 }}>
-              <div style={{ fontWeight: 600, marginBottom: 5, color: "var(--ink-secondary)" }}>汇报人</div>
+              <div style={{ fontWeight: 600, marginBottom: 4, color: "var(--ink-secondary)" }}>汇报人</div>
               <input className="editorial-input" value={author} onChange={(e) => setAuthor(e.target.value)} />
             </label>
             <label style={{ fontSize: 12 }}>
-              <div style={{ fontWeight: 600, marginBottom: 5, color: "var(--ink-secondary)" }}>单位 / 课题组</div>
+              <div style={{ fontWeight: 600, marginBottom: 4, color: "var(--ink-secondary)" }}>单位</div>
               <input className="editorial-input" value={affiliation} onChange={(e) => setAffiliation(e.target.value)} />
             </label>
             <label style={{ fontSize: 12 }}>
-              <div style={{ fontWeight: 600, marginBottom: 5, color: "var(--ink-secondary)" }}>指导教师 (选填)</div>
-              <input className="editorial-input" value={advisor} onChange={(e) => setAdvisor(e.target.value)} placeholder="如 张教授" />
+              <div style={{ fontWeight: 600, marginBottom: 4, color: "var(--ink-secondary)" }}>导师</div>
+              <input className="editorial-input" value={advisor} onChange={(e) => setAdvisor(e.target.value)} placeholder="选填" />
             </label>
             <label style={{ fontSize: 12 }}>
-              <div style={{ fontWeight: 600, marginBottom: 5, color: "var(--ink-secondary)" }}>日期</div>
+              <div style={{ fontWeight: 600, marginBottom: 4, color: "var(--ink-secondary)" }}>日期</div>
               <input className="editorial-input" value={dateStr} onChange={(e) => setDateStr(e.target.value)} />
             </label>
           </div>
@@ -260,8 +231,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "1fr 1fr 1fr",
-              gap: 12,
+              gridTemplateColumns: "1fr 1fr 1fr 1fr",
+              gap: 10,
               alignItems: "center",
               padding: 12,
               background: "var(--paper-bg)",
@@ -270,27 +241,19 @@ export const ImportModal: React.FC<ImportModalProps> = ({
             }}
           >
             <label style={{ fontSize: 12 }}>
-              <div style={{ fontWeight: 600, marginBottom: 5, color: "var(--ink-secondary)" }}>汇报场景</div>
-              <select
-                className="editorial-select"
-                value={scenario}
-                onChange={(e) => setScenario(e.target.value as ScenarioType)}
-              >
-                <option value="defense">学位答辩 / 开题答辩</option>
-                <option value="midterm">中期考核进展</option>
-                <option value="group_meeting">组会实验讨论</option>
-                <option value="literature_review">顶刊文献综述</option>
+              <div style={{ fontWeight: 600, marginBottom: 4, color: "var(--ink-secondary)" }}>场景</div>
+              <select className="editorial-select" value={scenario} onChange={(e) => setScenario(e.target.value as ScenarioType)}>
+                <option value="defense">答辩</option>
+                <option value="midterm">中期</option>
+                <option value="group_meeting">组会</option>
+                <option value="literature_review">文献综述</option>
               </select>
             </label>
 
             <label style={{ fontSize: 12 }}>
-              <div style={{ fontWeight: 600, marginBottom: 6, color: "var(--ink-secondary)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                  <Sliders size={12} /> 页数控制
-                </span>
-                <span className="font-mono" style={{ color: "var(--nature-crimson)", fontWeight: 700 }}>
-                  {slideCount} 页 ({slideCount <= 10 ? "短篇" : slideCount <= 18 ? "含目录" : "完整"})
-                </span>
+              <div style={{ fontWeight: 600, marginBottom: 5, color: "var(--ink-secondary)", display: "flex", justifyContent: "space-between" }}>
+                <span>页数</span>
+                <span className="font-mono" style={{ color: "var(--nature-crimson)", fontWeight: 700 }}>{slideCount}</span>
               </div>
               <input
                 type="range"
@@ -303,7 +266,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
             </label>
 
             <label style={{ fontSize: 12 }}>
-              <div style={{ fontWeight: 600, marginBottom: 5, color: "var(--ink-secondary)" }}>全套科研色板</div>
+              <div style={{ fontWeight: 600, marginBottom: 4, color: "var(--ink-secondary)" }}>配色</div>
               <select
                 key={`pal_${palettes.length}`}
                 className="editorial-select"
@@ -311,7 +274,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                 onChange={(e) => setPaletteId(e.target.value)}
               >
                 {palettes.length === 0 ? (
-                  <option value="lancet">Lancet 深蓝阶（默认锁定）</option>
+                  <option value="lancet">Lancet 深蓝</option>
                 ) : (
                   palettes.map((p) => (
                     <option key={p.id} value={p.id}>
@@ -321,58 +284,19 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                 )}
               </select>
             </label>
-          </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <label style={{ fontSize: 12 }}>
-              <div style={{ fontWeight: 600, marginBottom: 5, color: "var(--ink-secondary)" }}>排版视觉体系</div>
-              <select
-                className="editorial-select"
-                value={designStyle}
-                onChange={(e) => setDesignStyle(e.target.value as DesignStyle)}
-              >
-                <option value="defense_modular">顶配学术答辩模块化 (v5.0 · 纯白浮雕 + 梯形顶栏 + 目录页)</option>
-                <option value="consulting_editorial">麦肯锡 / J.P. Morgan 咨询看板风 (动作标题 + 数据表)</option>
-                <option value="zero_fill_frameless">极简零填充去框 (v4.0 · 63:37 纯白呼吸留白)</option>
+              <div style={{ fontWeight: 600, marginBottom: 4, color: "var(--ink-secondary)" }}>版式</div>
+              <select className="editorial-select" value={designStyle} onChange={(e) => setDesignStyle(e.target.value as DesignStyle)}>
+                <option value="defense_modular">答辩卡片风</option>
+                <option value="consulting_editorial">看板风</option>
+                <option value="zero_fill_frameless">极简去框</option>
               </select>
-            </label>
-
-            <label
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 9,
-                padding: "9px 12px",
-                background: "#FAF6EC",
-                border: "1px solid #D6C296",
-                borderRadius: 2,
-                fontSize: 12,
-                color: "var(--ink-secondary)",
-                cursor: "pointer",
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={isProposal}
-                onChange={(e) => setIsProposal(e.target.checked)}
-                style={{ accentColor: "var(--nature-crimson)" }}
-              />
-              <ShieldAlert size={16} color="#9A6B16" style={{ flexShrink: 0 }} />
-              <span>
-                <strong style={{ color: "var(--ink-primary)" }}>开题零模拟曲线门禁</strong>：拦截未测模拟曲线并转为实验设计图。
-              </span>
             </label>
           </div>
 
           <div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-secondary)" }}>
-                封面版式模板（实时套用当前所选科研色板，导出 PPT 后仍可任意换色）
-              </span>
-              <span className="font-mono" style={{ fontSize: 10.5, color: previewPrimary, fontWeight: 600 }}>
-                THEME SYNC: {paletteId.toUpperCase()}
-              </span>
-            </div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-secondary)", marginBottom: 6 }}>封面样式</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}>
               {COVER_TEMPLATE_OPTIONS.map((tpl) => {
                 const selected = coverTemplate === tpl.id;
@@ -391,10 +315,9 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                     }}
                   >
                     <CoverMiniPreview id={tpl.id} color={previewPrimary} tint={previewTint} />
-                    <div style={{ fontSize: 11, fontWeight: 700, color: selected ? "var(--nature-crimson)" : "var(--ink-primary)", marginTop: 5 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: selected ? "var(--nature-crimson)" : "var(--ink-primary)", marginTop: 4 }}>
                       {tpl.name}
                     </div>
-                    <div style={{ fontSize: 10, color: "var(--ink-muted)", marginTop: 1 }}>{tpl.desc}</div>
                   </button>
                 );
               })}
@@ -403,31 +326,30 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-              <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-secondary)" }}>
-                论文 / 开题报告正文或提纲（支持直接粘贴 SMILES）
-              </span>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  type="button"
-                  className="btn-editorial-ghost"
-                  onClick={() => setSourceText(SAMPLE_OUTLINE)}
-                  style={{ padding: "5px 10px", fontSize: 11.5 }}
-                >
-                  载入示范文本
-                </button>
+              <span style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-secondary)" }}>正文 / 提纲（可写药名或 SMILES）</span>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, color: "var(--ink-secondary)", cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={isProposal}
+                    onChange={(e) => setIsProposal(e.target.checked)}
+                    style={{ accentColor: "var(--nature-crimson)" }}
+                  />
+                  <span>开题报告</span>
+                </label>
                 <button
                   type="button"
                   className="btn-editorial-ghost"
                   onClick={() => fileRef.current?.click()}
-                  style={{ padding: "5px 10px", fontSize: 11.5, borderColor: "var(--oxford-navy)", color: "var(--oxford-navy)" }}
+                  style={{ padding: "4px 10px", fontSize: 11.5, borderColor: "var(--oxford-navy)", color: "var(--oxford-navy)" }}
                 >
-                  <FileUp size={13} /> 上传 Word (.docx) / PDF
+                  上传 Word / PDF
                 </button>
                 <input ref={fileRef} type="file" accept=".docx,.pdf,.txt,.md" hidden onChange={handleFileChange} />
               </div>
             </div>
             <textarea
-              rows={7}
+              rows={6}
               className="editorial-textarea"
               value={sourceText}
               onChange={(e) => setSourceText(e.target.value)}
@@ -440,7 +362,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
               取消
             </button>
             <button type="submit" className="btn-editorial-primary" disabled={loading}>
-              {loading ? "多智能体规划与绘图中..." : "规划 DeckSpec 并生成顶刊科研图"}
+              {loading ? "生成中..." : "开始生成"}
             </button>
           </div>
         </form>

@@ -285,3 +285,74 @@ def test_palette_apply_recolors_slide_pixels_and_cache_busts(tmp_path: Path, mon
 
     assert float(np.mean(np.abs(im_l1 - im_n1))) > 5.0
     assert float(np.mean(np.abs(im_l3 - im_n3))) > 1.0
+
+
+def test_all_5_3d_molecular_styles_and_api_override(tmp_path: Path, monkeypatch) -> None:
+    import numpy as np
+    from io import BytesIO
+
+    test_settings = Settings(
+        artifacts_root=tmp_path / "artifacts",
+        decks_root=tmp_path / "artifacts" / "decks",
+        gallery_root=tmp_path / "artifacts" / "archetype_gallery",
+        demo_deck_root=tmp_path / "artifacts" / "demo_deck",
+        llm_provider_mode="local",
+        figure_provider_mode="local",
+    )
+    monkeypatch.setattr(main_mod, "settings", test_settings)
+    client = TestClient(main_mod.app)
+
+    styles_3d = ["ball_stick", "stick_clean", "spacefill_cpk", "pymol_neon_green", "metallic_studio"]
+    for st in styles_3d:
+        res = render_cylview3d(
+            smiles="青蒿素",
+            output_png=tmp_path / f"artemisinin_{st}.png",
+            palette_id="lancet",
+            target_width_px=360,
+            dpi=150,
+            style_3d=st,
+        )
+        assert res.png_path.is_file()
+        assert res.sdf_path is not None and res.sdf_path.is_file()
+
+    init_spec = FigureSpec(
+        figure_id="fig_05",
+        archetype=ArchetypeId.A04,
+        box_in=FigureBoxIn(left=0.5, top=1.7, width=7.5, height=4.4),
+        assets=[FigureAsset(asset_id="mol_3d", engine=EngineType.cylview_3d, smiles="Osimertinib", style_3d="ball_stick")],
+    )
+    r_base = client.post(
+        "/api/figures/select-or-refine",
+        json={
+            "deck_id": "deck_test_3d_styles",
+            "slide_no": 5,
+            "palette_id": "lancet",
+            "figure_spec": init_spec.model_dump(),
+            "asset_id": "mol_3d",
+            "style_3d_override": "ball_stick",
+        },
+    )
+    assert r_base.status_code == 200
+    base_png = client.get(r_base.json()["asset_urls"]["mol_3d"]["png_url"]).content
+
+    r_neon = client.post(
+        "/api/figures/select-or-refine",
+        json={
+            "deck_id": "deck_test_3d_styles",
+            "slide_no": 5,
+            "palette_id": "lancet",
+            "figure_spec": r_base.json()["figure_spec"],
+            "asset_id": "mol_3d",
+            "style_3d_override": "pymol_neon_green",
+            "rotation_deg_override": [35.0, 0.0, 0.0],
+        },
+    )
+    assert r_neon.status_code == 200
+    ast_neon = r_neon.json()["figure_spec"]["assets"][0]
+    assert ast_neon["style_3d"] == "pymol_neon_green"
+    assert ast_neon["rotation_deg"] == [35.0, 0.0, 0.0]
+    neon_png = client.get(r_neon.json()["asset_urls"]["mol_3d"]["png_url"]).content
+
+    arr_b = np.asarray(Image.open(BytesIO(base_png)).convert("RGB").resize((120, 90)), dtype=np.int16)
+    arr_n = np.asarray(Image.open(BytesIO(neon_png)).convert("RGB").resize((120, 90)), dtype=np.int16)
+    assert float(np.mean(np.abs(arr_b - arr_n))) > 3.0

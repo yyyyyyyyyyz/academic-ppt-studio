@@ -216,6 +216,9 @@ export async function selectOrRefineFigure(payload: {
   render_mode?: string;
   mech_mode_override?: string;
   chem_style_override?: string;
+  style_3d_override?: string;
+  rotation_deg_override?: number[];
+  show_nonpolar_h_override?: boolean;
 }): Promise<{ figure_spec: FigureSpec; asset_urls: Record<string, AssetUrlBundle> }> {
   return jsonReq("/api/figures/select-or-refine", { method: "POST", body: JSON.stringify(payload) });
 }

@@ -1,16 +1,5 @@
 import React, { useEffect, useState } from "react";
 import {
-  FilePlus2,
-  Palette,
-  Download,
-  BookOpen,
-  ArrowLeft,
-  ArrowRight,
-  CheckCircle2,
-  Cpu,
-  X,
-} from "lucide-react";
-import {
   applyPaletteToDeck,
   buildPptx,
   checkAccessCode,
@@ -60,30 +49,26 @@ SMILES: Cc1ccc(NC(=O)c2ccc(CN3CCN(C)CC3)cc2)cc1Nc4nccc(n4)c5cccnc5`;
 const CURATED_PLATES = [
   {
     id: "plate_01",
-    tab: "PLATE 01",
-    label: "绛红目录",
-    caption: "Fig. 1 | Archival Crimson Contents — Cohesive Nature Editorial Palette matching web workbench",
+    tab: "目录",
+    label: "分镜目录",
     src: "/api/artifacts/decks/nature_editorial_showcase/previews/slide_01.png",
   },
   {
     id: "plate_02",
-    tab: "PLATE 02",
-    label: "双风格 2D",
-    caption: "Fig. 2 | Penicillin G (Nature Burgundy) vs. (+)-Artemisinin (Ring-Shaded Pharmacophore) — 2D Vectors",
+    tab: "2D 结构",
+    label: "ChemDraw 2D",
     src: "/api/artifacts/decks/nature_editorial_showcase/previews/slide_02.png",
   },
   {
     id: "plate_03",
-    tab: "PLATE 03",
-    label: "3D 过氧桥",
-    caption: "Fig. 3 | (+)-Artemisinin 3D CYLview Conformation & SMARTS-Anchored Endoperoxide Mechanism",
+    tab: "3D 结构",
+    label: "3D 球棍模型",
     src: "/api/artifacts/decks/nature_editorial_showcase/previews/slide_03.png",
   },
   {
     id: "plate_04",
-    tab: "PLATE 04",
-    label: "机理 + 线稿",
-    caption: "Fig. 4 | Pd(0)/Pd(II) Buchwald–Hartwig Catalytic Cycle & Minimal-Mono Highlighted Imatinib",
+    tab: "对比",
+    label: "结构线稿",
     src: "/api/artifacts/decks/nature_editorial_showcase/previews/slide_04.png",
   },
 ];
@@ -365,6 +350,9 @@ export function App() {
     render_mode?: string;
     mech_mode_override?: string;
     chem_style_override?: string;
+    style_3d_override?: string;
+    rotation_deg_override?: number[];
+    show_nonpolar_h_override?: boolean;
   }) => {
     if (!deck || !currentSlide?.figure_spec) return;
     setBusy(true);
@@ -505,7 +493,6 @@ export function App() {
 
           {deck ? (
             <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-              <span className="kicker" style={{ color: "var(--nature-crimson)", flexShrink: 0 }}>MANUSCRIPT</span>
               <span
                 className="font-serif"
                 style={{
@@ -521,21 +508,16 @@ export function App() {
                 {deck.meta.deck_title}
               </span>
             </div>
-          ) : (
-            <span className="kicker" style={{ color: "var(--ink-muted)" }}>
-              NATURE-STYLE EDITORIAL WORKBENCH · VOL. 5.0
-            </span>
-          )}
+          ) : null}
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
           {deck && (
             <button type="button" className="btn-editorial-ghost" onClick={() => setDeck(null)}>
-              <ArrowLeft size={14} /> 返回封面
+              返回
             </button>
           )}
           <button type="button" className="btn-editorial-ghost" onClick={() => setModelSettingsOpen(true)}>
-            <Cpu size={14} color={isCloudAiActive(aiConfig) ? "var(--audit-sage)" : "var(--ink-muted)"} />
             <span>AI 模型</span>
             <span
               className="font-mono"
@@ -549,27 +531,26 @@ export function App() {
             >
               {isHostedAiActive(aiConfig)
                 ? hostedCredits !== null
-                  ? `官方 Pro · 剩 ${hostedCredits} 次`
-                  : "官方 Pro"
+                  ? `Pro · ${hostedCredits}`
+                  : "Pro"
                 : isCloudAiActive(aiConfig)
                   ? aiConfig.model || aiConfig.provider
-                  : "本地引擎"}
+                  : "本地"}
             </span>
           </button>
           <button type="button" className="btn-editorial-ghost" onClick={() => setImportOpen(true)}>
-            <FilePlus2 size={14} /> 新建 / 导入手稿
+            新建 / 导入
           </button>
           {deck && (
             <>
               <button type="button" className="btn-editorial-ghost" onClick={() => setPaletteOpen(true)}>
-                <Palette size={14} color="var(--oxford-navy)" />
-                <span>期刊色板</span>
+                <span>配色</span>
                 <span className="font-mono" style={{ fontSize: 11, color: "var(--oxford-navy)" }}>
                   {deck.meta.palette_id}
                 </span>
               </button>
               <button type="button" className="btn-editorial-primary" onClick={() => setExportOpen(true)}>
-                <Download size={14} /> 编译 & 导出 .pptx
+                导出 PPTX
               </button>
             </>
           )}
@@ -594,9 +575,9 @@ export function App() {
           <button
             type="button"
             onClick={() => setErrorMsg(null)}
-            style={{ border: "none", background: "transparent", color: "var(--nature-crimson)", cursor: "pointer", padding: 2 }}
+            style={{ border: "none", background: "transparent", color: "var(--nature-crimson)", cursor: "pointer", padding: 2, fontSize: 16, lineHeight: 1 }}
           >
-            <X size={14} />
+            ×
           </button>
         </div>
       )}
@@ -634,179 +615,74 @@ export function App() {
           />
         </div>
       ) : (
-        <main style={{ flex: 1, overflowY: "auto", padding: "28px 32px 44px" }}>
-          <div className="editorial-fade-in" style={{ maxWidth: 1240, margin: "0 auto" }}>
-            {/* Top Swiss Issue Strip */}
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                flexWrap: "wrap",
-                gap: 12,
-                paddingBottom: 12,
-                borderBottom: "1px solid var(--rule-hairline)",
-                marginBottom: 34,
-              }}
-            >
-              <span className="kicker" style={{ color: "var(--ink-secondary)" }}>
-                ISSUE 05 · COMPUTATIONAL MEDICINAL CHEMISTRY
-              </span>
-              <span className="kicker" style={{ color: "var(--ink-muted)" }}>
-                NATIVE EDITABLE PPTX ENGINE · 100% ZERO-RASTER VECTOR PIPELINE
-              </span>
-            </div>
-
-            {/* Asymmetric 2-Column Editorial Cover Spread */}
+        <main style={{ flex: 1, overflowY: "auto", padding: "40px 32px" }}>
+          <div className="editorial-fade-in" style={{ maxWidth: 1180, margin: "0 auto" }}>
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "minmax(340px, 1.05fr) minmax(380px, 1.05fr)",
-                gap: 48,
-                alignItems: "start",
+                gridTemplateColumns: "minmax(320px, 0.95fr) minmax(380px, 1.15fr)",
+                gap: 44,
+                alignItems: "center",
               }}
             >
-              {/* Left Feature Copy */}
-              <div style={{ display: "flex", flexDirection: "column", paddingTop: 6 }}>
-                <div className="kicker" style={{ color: "var(--nature-crimson)", marginBottom: 14 }}>
-                  EDITORIAL WORKBENCH · SCIENTIFIC PRESENTATION
-                </div>
-
+              <div style={{ display: "flex", flexDirection: "column" }}>
                 <h1
                   className="font-serif"
                   style={{
-                    margin: "0 0 18px 0",
-                    fontSize: "clamp(30px, 3vw, 40px)",
-                    lineHeight: 1.24,
+                    margin: "0 0 14px 0",
+                    fontSize: "clamp(28px, 3vw, 38px)",
+                    lineHeight: 1.25,
                     fontWeight: 700,
                     color: "var(--ink-primary)",
-                    letterSpacing: "-0.015em",
                   }}
                 >
-                  将顶刊论文与实验数据，编排为发表级原生可编辑演示稿
+                  学术汇报与分子结构排版台
                 </h1>
 
                 <p
                   style={{
-                    margin: "0 0 28px 0",
+                    margin: "0 0 24px 0",
                     fontSize: 15,
-                    lineHeight: 1.78,
+                    lineHeight: 1.7,
                     color: "var(--ink-secondary)",
-                    maxWidth: 540,
+                    maxWidth: 460,
                   }}
                 >
-                  专为药学、计算药化与材料科研打造的期刊级排版工作台。自动生成带手性楔形键的{" "}
-                  <strong>ChemDraw 2D 矢量分子</strong>、<strong>PyMOL 级 3D 球棍构象</strong>与嵌入式 Excel
-                  数据源柱状图——全页纯白留白、零栅格图拼接，支持在 PowerPoint 中任意取消组合编辑。
+                  导入论文或提纲，生成可编辑 PPT 与多种风格的 2D / 3D 分子结构式。
                 </p>
 
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 38 }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
                   <button
                     type="button"
                     className="btn-editorial-primary"
-                    style={{ padding: "12px 22px", fontSize: 13.5 }}
+                    style={{ padding: "11px 22px", fontSize: 13.5 }}
                     onClick={() => setImportOpen(true)}
                   >
-                    <FilePlus2 size={16} /> 新建手稿 / 导入论文
+                    新建 / 导入
                   </button>
                   <button
                     type="button"
                     className="btn-editorial-ghost"
-                    style={{ padding: "12px 20px", fontSize: 13.5, borderColor: "var(--ink-primary)" }}
+                    style={{ padding: "11px 20px", fontSize: 13.5, borderColor: "var(--ink-primary)" }}
                     disabled={busy}
                     onClick={handleLoadNirmatrelvirDemo}
                   >
-                    <BookOpen size={16} color="var(--nature-crimson)" />
-                    <span>{busy ? "正在装配 4 页示范稿..." : "载入 Nature 经典药化示范工作台"}</span>
-                    <ArrowRight size={14} />
+                    {busy ? "载入中..." : "载入示例"}
                   </button>
-                </div>
-
-                {/* Bottom Swiss 3-Column Telemetry Strip */}
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(3, 1fr)",
-                    borderTop: "1px solid var(--rule-strong)",
-                    paddingTop: 20,
-                    gap: 18,
-                  }}
-                >
-                  <div>
-                    <div className="font-serif" style={{ fontSize: 28, fontWeight: 700, color: "var(--ink-primary)", lineHeight: 1.1 }}>
-                      15
-                    </div>
-                    <div style={{ fontSize: 12, color: "var(--ink-secondary)", marginTop: 4, fontWeight: 600 }}>
-                      顶刊实测科研色板
-                    </div>
-                    <div className="font-mono" style={{ fontSize: 10.5, color: "var(--ink-muted)", marginTop: 2 }}>
-                      Lancet · Nature · Science
-                    </div>
-                  </div>
-                  <div style={{ borderLeft: "1px solid var(--rule-hairline)", paddingLeft: 18 }}>
-                    <div className="font-serif" style={{ fontSize: 28, fontWeight: 700, color: "var(--nature-crimson)", lineHeight: 1.1 }}>
-                      100%
-                    </div>
-                    <div style={{ fontSize: 12, color: "var(--ink-secondary)", marginTop: 4, fontWeight: 600 }}>
-                      原生矢量可编辑
-                    </div>
-                    <div className="font-mono" style={{ fontSize: 10.5, color: "var(--ink-muted)", marginTop: 2 }}>
-                      GroupShape + OOXML Chart
-                    </div>
-                  </div>
-                  <div style={{ borderLeft: "1px solid var(--rule-hairline)", paddingLeft: 18 }}>
-                    <div className="font-serif" style={{ fontSize: 28, fontWeight: 700, color: "var(--oxford-navy)", lineHeight: 1.1 }}>
-                      ≥14 pt
-                    </div>
-                    <div style={{ fontSize: 12, color: "var(--ink-secondary)", marginTop: 4, fontWeight: 600 }}>
-                      双字体自动合规门禁
-                    </div>
-                    <div className="font-mono" style={{ fontSize: 10.5, color: "var(--ink-muted)", marginTop: 2 }}>
-                      微软雅黑 + Arial XML
-                    </div>
-                  </div>
                 </div>
               </div>
 
-              {/* Right Curated Printed Specimen Plate */}
               <div style={{ display: "flex", flexDirection: "column" }}>
                 <div
                   style={{
                     background: "var(--surface-pure)",
                     border: "1px solid #D6D2C8",
+                    borderTop: "2px solid var(--ink-primary)",
                     borderRadius: 2,
                     padding: 12,
                     boxShadow: "0 18px 42px rgba(23, 23, 23, 0.08)",
                   }}
                 >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      paddingBottom: 8,
-                      marginBottom: 10,
-                      borderBottom: "1px solid var(--rule-hairline)",
-                    }}
-                  >
-                    <span className="kicker" style={{ color: "var(--ink-secondary)" }}>
-                      CURATED SPECIMEN · {activePlate.tab}
-                    </span>
-                    <span
-                      className="font-mono"
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 4,
-                        fontSize: 10.5,
-                        color: "var(--audit-sage)",
-                        fontWeight: 600,
-                      }}
-                    >
-                      <CheckCircle2 size={12} /> AUDIT PASSED · 0 VIOLATIONS
-                    </span>
-                  </div>
-
                   <div
                     style={{
                       width: "100%",
@@ -828,23 +704,10 @@ export function App() {
                       />
                     ) : (
                       <div style={{ textAlign: "center", padding: 24, color: "var(--ink-muted)", fontSize: 13 }}>
-                        点击左侧“载入 Nature 经典药化示范工作台”即时生成高清科研图版。
+                        点击左侧“载入示例”查看预览
                       </div>
                     )}
                   </div>
-                </div>
-
-                {/* Printed Figure Legend Caption + 4 Minimalist Plate Tabs */}
-                <div
-                  className="font-serif"
-                  style={{
-                    marginTop: 12,
-                    fontSize: 12.5,
-                    color: "var(--ink-secondary)",
-                    lineHeight: 1.5,
-                  }}
-                >
-                  {activePlate.caption}
                 </div>
 
                 <div
@@ -852,9 +715,8 @@ export function App() {
                     display: "grid",
                     gridTemplateColumns: "repeat(4, 1fr)",
                     gap: 8,
-                    marginTop: 12,
-                    borderTop: "1px solid var(--rule-hairline)",
-                    paddingTop: 10,
+                    marginTop: 10,
+                    paddingTop: 8,
                   }}
                 >
                   {CURATED_PLATES.map((pl, idx) => {
@@ -872,27 +734,15 @@ export function App() {
                           padding: "6px 4px",
                           background: "transparent",
                           border: "none",
-                          borderTop: isActive ? "2px solid var(--nature-crimson)" : "2px solid transparent",
+                          borderTop: isActive ? "2px solid var(--nature-crimson)" : "2px solid var(--rule-hairline)",
                           cursor: "pointer",
-                          transition: "border-color 140ms ease",
                         }}
                       >
-                        <div
-                          className="font-mono"
-                          style={{
-                            fontSize: 10,
-                            fontWeight: 600,
-                            color: isActive ? "var(--nature-crimson)" : "var(--ink-muted)",
-                          }}
-                        >
-                          {pl.tab}
-                        </div>
                         <div
                           style={{
                             fontSize: 12,
                             fontWeight: isActive ? 700 : 500,
-                            color: isActive ? "var(--ink-primary)" : "var(--ink-secondary)",
-                            marginTop: 2,
+                            color: isActive ? "var(--nature-crimson)" : "var(--ink-secondary)",
                           }}
                         >
                           {pl.label}
