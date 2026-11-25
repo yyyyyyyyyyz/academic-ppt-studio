@@ -1,0 +1,31 @@
+name: Deploy to Alibaba Cloud ECS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-aliyun-ecs
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        env:
+          ECS_HOST: ${{ secrets.ECS_HOST }}
+          ECS_USER: ${{ secrets.ECS_USER }}
+          ECS_SSH_KEY: ${{ secrets.ECS_SSH_KEY }}
+        run: |
+          if [ -z "$ECS_HOST" ] || [ -z "$ECS_SSH_KEY" ]; then
+            echo "Skipping ECS deploy: configure ECS_HOST and ECS_SSH_KEY repository secrets first."
+            exit 0
+          fi
+          USER_NAME="${ECS_USER:-root}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$ECS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -i ~/.ssh/deploy_key "${USER_NAME}@${ECS_HOST}" "bash /opt/academic-ppt-studio/deploy/update.sh"
