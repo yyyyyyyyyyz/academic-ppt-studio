@@ -1,0 +1,840 @@
+"""v5.0 Native python-pptx Academic Defense & Consulting Layout Engine.
+
+Implements:
+- Dedicated split-panel 目录 (TOC) slide (deep-navy left block with subtle geometric rings + elevated white chapter cards)
+- Deep-navy bilingual cutout-trapezoid header bar with hairline divider & double-chevron Row 2 heading
+- Elevated pure-white (#FFFFFF) cards/containers with soft OOXML drop shadows, thin #D6E0EC borders & chamfered header tabs
+- Strictly微软雅黑 + Arial XML dual-font binding (>= 14pt body/charts/tables, refined 9.5–12pt micro-chrome)
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Callable, Optional, Tuple
+
+from lxml import etree
+from pptx.dml.color import RGBColor
+from pptx.enum.shapes import MSO_CONNECTOR, MSO_SHAPE
+from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
+from pptx.oxml.ns import qn
+from pptx.util import Inches, Pt
+
+from ..figure_factory.palettes import ScientificPalette, blend_with_white, hex_to_rgb
+from ..schemas.deck_spec import DeckSpec, FigureBoxIn, LayoutId, SlideSpec
+from .xml_utils import (
+    apply_soft_card_shadow,
+    apply_zebra_table_borders,
+    configure_zero_fill_textbox,
+    populate_paragraph,
+)
+
+
+_DEFAULT_EN_SUBS = [
+    "Background & Evolution",
+    "Conformation & Mechanism",
+    "Quantitative & PK Data",
+    "Research Outlook",
+    "Methodology & Design",
+    "Experimental Outcomes",
+]
+
+
+def _rgb(hex_str: str) -> RGBColor:
+    r, g, b = hex_to_rgb(hex_str)
+    return RGBColor(r, g, b)
+
+
+def _fonts(deck: DeckSpec) -> Tuple[str, str]:
+    fonts = deck.locked_standards.fonts or {}
+    return fonts.get("ea", "微软雅黑"), fonts.get("latin", "Arial")
+
+
+def _split_bilingual(raw: str, idx: int) -> Tuple[str, str]:
+    if "|" in raw:
+        cn, en = raw.split("|", 1)
+        return cn.strip(), en.strip()
+    return raw.strip(), _DEFAULT_EN_SUBS[idx % len(_DEFAULT_EN_SUBS)]
+
+
+def _clean_section_heading(spec: SlideSpec) -> str:
+    sec = (spec.section_name or "").strip()
+    if sec:
+        stripped = sec.lstrip("0123456789.- ")
+        return stripped or sec
+    return spec.title[:10]
+
+
+def get_v5_figure_box(layout_id: LayoutId) -> FigureBoxIn:
+    """Return canonical Layer 1 figure slot coordinates (in) for each v5.0 pure-white layout."""
+    mapping = {
+        LayoutId.lit_overview_dual_card: FigureBoxIn(left=0.52, top=1.86, width=8.18, height=2.92),
+        LayoutId.mechanism_3col_flow: FigureBoxIn(left=4.05, top=1.98, width=5.24, height=3.84),
+        LayoutId.data_dashboard_table: FigureBoxIn(left=0.54, top=2.86, width=7.30, height=3.18),
+        LayoutId.bg_top_summary_3box: FigureBoxIn(left=4.56, top=3.26, width=4.16, height=2.60),
+        LayoutId.pain_points_left_arrows: FigureBoxIn(left=5.82, top=2.04, width=6.94, height=3.06),
+        LayoutId.fig_left_3step_chain: FigureBoxIn(left=0.56, top=2.06, width=7.44, height=3.84),
+        LayoutId.vs_center_wing: FigureBoxIn(left=3.90, top=2.06, width=5.52, height=3.84),
+        LayoutId.roadmap_layered_matrix: FigureBoxIn(left=1.42, top=1.74, width=7.32, height=4.16),
+    }
+    return mapping.get(layout_id, FigureBoxIn(left=0.46, top=1.68, width=7.75, height=4.42))
+
+
+def add_rounded_box(
+    slide,
+    left_in: float,
+    top_in: float,
+    width_in: float,
+    height_in: float,
+    fill_hex: Optional[str] = "#FFFFFF",
+    border_hex: Optional[str] = "#D6E0EC",
+    border_pt: float = 0.75,
+    dashed: bool = False,
+    radius: float = 0.08,
+    shadow: bool = False,
+    name: Optional[str] = None,
+):
+    shp = slide.shapes.add_shape(
+        MSO_SHAPE.ROUNDED_RECTANGLE,
+        Inches(left_in), Inches(top_in), Inches(width_in), Inches(height_in),
+    )
+    if name:
+        shp.name = name
+    try:
+        shp.adjustments[0] = radius
+    except Exception:
+        pass
+    if fill_hex:
+        shp.fill.solid()
+        shp.fill.fore_color.rgb = _rgb(fill_hex)
+    else:
+        shp.fill.background()
+
+    if border_hex and border_pt > 0:
+        shp.line.color.rgb = _rgb(border_hex)
+        shp.line.width = Pt(border_pt)
+        if dashed:
+            ln = shp.line._get_or_add_ln()
+            etree.SubElement(ln, qn("a:prstDash")).set("val", "dash")
+    else:
+        shp.line.fill.background()
+
+    if shadow and fill_hex:
+        apply_soft_card_shadow(shp)
+    return shp
+
+
+def add_rect(
+    slide,
+    left_in: float,
+    top_in: float,
+    width_in: float,
+    height_in: float,
+    fill_hex: Optional[str] = "#FFFFFF",
+    border_hex: Optional[str] = None,
+    border_pt: float = 0.75,
+    name: Optional[str] = None,
+):
+    shp = slide.shapes.add_shape(
+        MSO_SHAPE.RECTANGLE,
+        Inches(left_in), Inches(top_in), Inches(width_in), Inches(height_in),
+    )
+    if name:
+        shp.name = name
+    if fill_hex:
+        shp.fill.solid()
+        shp.fill.fore_color.rgb = _rgb(fill_hex)
+    else:
+        shp.fill.background()
+    if border_hex and border_pt > 0:
+        shp.line.color.rgb = _rgb(border_hex)
+        shp.line.width = Pt(border_pt)
+    else:
+        shp.line.fill.background()
+    return shp
+
+
+def add_box_text(
+    slide,
+    left_in: float,
+    top_in: float,
+    width_in: float,
+    height_in: float,
+    text: str,
+    size_pt: float = 14.0,
+    bold: bool = False,
+    color_hex: str = "#162032",
+    highlight_phrase: Optional[str] = None,
+    highlight_color_hex: Optional[str] = None,
+    align: PP_ALIGN = PP_ALIGN.LEFT,
+    anchor: MSO_ANCHOR = MSO_ANCHOR.MIDDLE,
+    line_spacing: float = 1.15,
+    name: Optional[str] = None,
+    ea_font: str = "微软雅黑",
+    latin_font: str = "Arial",
+):
+    tb = slide.shapes.add_textbox(Inches(left_in), Inches(top_in), Inches(width_in), Inches(height_in))
+    if name:
+        tb.name = name
+    configure_zero_fill_textbox(tb, word_wrap=True, anchor=anchor)
+    p = tb.text_frame.paragraphs[0]
+    populate_paragraph(
+        p,
+        text=text,
+        size_pt=size_pt,
+        bold=bold,
+        color_hex=color_hex,
+        highlight_phrase=highlight_phrase,
+        highlight_color_hex=highlight_color_hex,
+        align=align,
+        line_spacing=line_spacing,
+        ea_font=ea_font,
+        latin_font=latin_font,
+    )
+    return tb
+
+
+def add_chamfered_header_tab(
+    slide,
+    left_in: float,
+    top_in: float,
+    width_in: float,
+    height_in: float,
+    text: str,
+    fill_hex: str,
+    text_color: str = "#FFFFFF",
+    radius: float = 0.18,
+    size_pt: float = 14.0,
+    ea_font: str = "微软雅黑",
+    latin_font: str = "Arial",
+    name: Optional[str] = None,
+) -> None:
+    """Render a sleek compact chamfered-feel capsule tab with crisp top hairline highlight."""
+    tab = add_rounded_box(
+        slide, left_in, top_in, width_in, height_in,
+        fill_hex=fill_hex, border_hex=None, radius=radius, name=name,
+    )
+    apply_soft_card_shadow(tab, blur_pt=3.0, dist_pt=1.0, alpha_pct=10)
+    hi_hex = blend_with_white(fill_hex, 0.55)
+    add_line(slide, left_in + 0.16, top_in + 0.03, left_in + width_in - 0.16, top_in + 0.03, color_hex=hi_hex, width_pt=0.65)
+    add_box_text(
+        slide, left_in + 0.06, top_in, width_in - 0.12, height_in,
+        text=text, size_pt=size_pt, bold=True, color_hex=text_color,
+        align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE, line_spacing=1.0,
+        ea_font=ea_font, latin_font=latin_font,
+    )
+
+
+def add_line(
+    slide,
+    x1_in: float,
+    y1_in: float,
+    x2_in: float,
+    y2_in: float,
+    color_hex: str,
+    width_pt: float = 1.0,
+    dashed: bool = False,
+    arrow_end: bool = False,
+):
+    conn = slide.shapes.add_connector(
+        MSO_CONNECTOR.STRAIGHT,
+        Inches(x1_in), Inches(y1_in),
+        Inches(x2_in), Inches(y2_in),
+    )
+    conn.line.color.rgb = _rgb(color_hex)
+    conn.line.width = Pt(width_pt)
+    ln = conn.line._get_or_add_ln()
+    if dashed:
+        etree.SubElement(ln, qn("a:prstDash")).set("val", "dash")
+    if arrow_end:
+        tail = etree.SubElement(ln, qn("a:tailEnd"))
+        tail.set("type", "triangle")
+        tail.set("w", "med")
+        tail.set("len", "med")
+    return conn
+
+
+def _add_faint_hex(slide, l_in: float, t_in: float, w_in: float, h_in: float, name: str) -> None:
+    hx = slide.shapes.add_shape(MSO_SHAPE.HEXAGON, Inches(l_in), Inches(t_in), Inches(w_in), Inches(h_in))
+    hx.fill.background()
+    hx.line.color.rgb = _rgb("#FFFFFF")
+    hx.line.width = Pt(1.2)
+    ln = hx.line._get_or_add_ln()
+    sf = ln.find(qn("a:solidFill"))
+    if sf is not None:
+        srgb = sf.find(qn("a:srgbClr"))
+        if srgb is not None:
+            etree.SubElement(srgb, qn("a:alpha")).set("val", "14000")
+    hx.name = name
+
+
+# ---------------------------------------------------------------------------
+# Dedicated Split-Panel 目录 (TOC) Slide
+# ---------------------------------------------------------------------------
+
+def build_v5_toc_slide(slide, spec: SlideSpec, deck: DeckSpec, pal: ScientificPalette) -> None:
+    """Build split-panel 目录 slide modeled on reference PPTX Slide 3: left theme sidebar + offset layered tiles."""
+    ea_f, lat_f = _fonts(deck)
+    sub_tint = blend_with_white(pal.s4, 0.56)
+    shadow_tile = blend_with_white(pal.s1, 0.78)
+    rule_tint = blend_with_white(pal.s1, 0.35)
+
+    # Left full-height theme vertical block (w=3.50") + subtle geometric hexagons
+    add_rect(slide, 0.0, 0.0, 3.50, 7.50, fill_hex=pal.s1, name="L2_toc_left_bg")
+    _add_faint_hex(slide, 0.12, 0.22, 1.38, 1.22, "L2_toc_hex_1")
+    _add_faint_hex(slide, 1.02, 0.72, 0.86, 0.76, "L2_toc_hex_2")
+    _add_faint_hex(slide, 1.98, 5.84, 1.42, 1.24, "L2_toc_hex_3")
+
+    add_box_text(slide, 0.34, 0.36, 2.82, 0.30, "LITERATURE SEMINAR", size_pt=10.5, bold=True, color_hex=sub_tint, align=PP_ALIGN.LEFT, name="L3_toc_tag", ea_font=ea_f, latin_font=lat_f)
+
+    # Stacked giant "目\n录" + 90-degree clockwise vertical "CONTENTS" side-by-side
+    add_box_text(
+        slide, 0.58, 1.88, 1.10, 2.95,
+        "目\n录", size_pt=72.0, bold=True, color_hex="#FFFFFF",
+        align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE, line_spacing=1.02,
+        name="L3_toc_hero", ea_font=ea_f, latin_font=lat_f,
+    )
+    tb_en = add_box_text(
+        slide, 1.78, 3.12, 1.60, 0.44,
+        "CONTENTS", size_pt=16.5, bold=True, color_hex=sub_tint,
+        align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE, line_spacing=1.0,
+        name="L3_toc_en_hero", ea_font=ea_f, latin_font=lat_f,
+    )
+    tb_en.rotation = 90.0
+
+    # Wrapped deck title + subtitle at bottom-left
+    add_box_text(slide, 0.34, 6.02, 2.86, 0.68, deck.meta.deck_title, size_pt=11.0, bold=True, color_hex="#FFFFFF", align=PP_ALIGN.LEFT, anchor=MSO_ANCHOR.BOTTOM, line_spacing=1.15, name="L3_footer_left", ea_font=ea_f, latin_font=lat_f)
+    if deck.meta.deck_subtitle:
+        add_box_text(slide, 0.34, 6.76, 2.86, 0.38, deck.meta.deck_subtitle, size_pt=9.5, bold=False, color_hex=sub_tint, align=PP_ALIGN.LEFT, anchor=MSO_ANCHOR.TOP, line_spacing=1.1, name="L3_footer_sub", ea_font=ea_f, latin_font=lat_f)
+
+    # Top-right affiliation micro-header
+    add_box_text(slide, 8.60, 0.30, 4.30, 0.32, deck.meta.affiliation, size_pt=11.5, bold=True, color_hex=pal.s1, align=PP_ALIGN.RIGHT, name="L3_footer_right", ea_font=ea_f, latin_font=lat_f)
+
+    items = spec.toc_items or [f"{s.section_name}|Section {i+1:02d}" for i, s in enumerate(deck.slides) if s.section_name] or [
+        "弹头与构效演进|SAR & Warhead Evolution",
+        "三维构象与机理|3D Conformation & Binding",
+        "药代与临床转化|Oral PK & Translation",
+    ]
+    items = items[:6]
+    n = len(items)
+    tile_s = 0.78 if n <= 4 else 0.72
+    step_y = 1.32 if n <= 3 else (1.16 if n == 4 else (1.04 if n == 5 else 0.94))
+    total_h = (n - 1) * step_y + tile_s
+    start_y = max(0.86, 3.82 - total_h * 0.5)
+
+    for idx, raw in enumerate(items):
+        ry = start_y + idx * step_y
+        cn, en = _split_bilingual(raw, idx)
+        cn_clean = re.sub(r"^\d{1,2}\s*", "", cn).strip() or cn
+
+        # Offset double-layer rounded number tile (shadow tile + primary tile)
+        add_rounded_box(slide, 4.74, ry + 0.06, tile_s, tile_s, fill_hex=shadow_tile, border_hex=None, radius=0.18, name=f"L2_toc_tile_bg_{idx}")
+        add_rounded_box(slide, 4.66, ry, tile_s, tile_s, fill_hex=pal.s1, border_hex=None, radius=0.18, name=f"L2_toc_num_{idx}")
+        add_box_text(slide, 4.66, ry, tile_s, tile_s, f"{idx+1:02d}", size_pt=24.0, bold=True, color_hex="#FFFFFF", align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE, name=f"L3_toc_num_{idx}", ea_font=ea_f, latin_font=lat_f)
+
+        # Clean unboxed section title + bilingual subtitle + right page ref + crisp underline
+        add_box_text(slide, 5.74, ry + 0.04, 5.80, 0.42, cn_clean, size_pt=22.0, bold=True, color_hex=pal.ink, anchor=MSO_ANCHOR.MIDDLE, name=f"L3_toc_cn_{idx}", ea_font=ea_f, latin_font=lat_f)
+        if en:
+            add_box_text(slide, 5.74, ry + 0.46, 5.60, 0.24, en, size_pt=11.5, bold=False, color_hex="#64748B", name=f"L3_toc_sub_{idx}", ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, 11.62, ry + 0.12, 0.82, 0.32, f"P.{idx+2:02d}", size_pt=11.5, bold=True, color_hex=pal.s3, align=PP_ALIGN.RIGHT, name=f"L3_toc_page_{idx}", ea_font=ea_f, latin_font=lat_f)
+        add_line(slide, 5.74, ry + tile_s - 0.02, 12.44, ry + tile_s - 0.02, color_hex=rule_tint, width_pt=1.35)
+
+
+# ---------------------------------------------------------------------------
+# Deep-Navy Cutout-Trapezoid Bilingual Header + Pure-White Inline Takeaway
+# ---------------------------------------------------------------------------
+
+def add_v5_header(
+    slide,
+    spec: SlideSpec,
+    deck: DeckSpec,
+    pal: ScientificPalette,
+    total_slides: int,
+) -> float:
+    """Render reference-grade deep-navy cutout header bar + Row 2 vector chevrons & elevated white takeaway card."""
+    ea_f, lat_f = _fonts(deck)
+    variant = spec.header_variant or "nav_tabs"
+
+    if variant == "editorial":
+        add_rect(slide, 0.42, 0.20, 1.35, 0.05, fill_hex=pal.s1, name="L2_editorial_rule")
+        add_box_text(slide, 0.42, 0.28, 11.20, 0.46, spec.title, size_pt=20.5, bold=True, color_hex=pal.ink, line_spacing=1.08, name="L3_title", ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, 11.75, 0.34, 1.16, 0.32, f"{spec.slide_no:02d} / {total_slides:02d}", size_pt=12.0, bold=True, color_hex=pal.s1, align=PP_ALIGN.RIGHT, name="L3_page_num", ea_font=ea_f, latin_font=lat_f)
+        add_box_text(
+            slide, 0.42, 0.78, 12.48, 0.42,
+            spec.takeaway, size_pt=14.0, bold=False, color_hex=pal.muted,
+            highlight_phrase=spec.takeaway_highlight, highlight_color_hex=pal.s1,
+            line_spacing=1.12, name="L3_takeaway", ea_font=ea_f, latin_font=lat_f,
+        )
+        add_line(slide, 0.42, 1.26, 12.91, 1.26, color_hex=pal.line, width_pt=0.85)
+        return 1.38
+
+    # Full-width deep-navy top bar + subtle bottom hairline BEFORE trapezoid cutout
+    add_rect(slide, 0.0, 0.0, 13.333, 0.70, fill_hex=pal.s1, name="L2_nav_bg")
+    add_line(slide, 0.0, 0.70, 13.333, 0.70, color_hex="#E2E8F0", width_pt=0.75)
+
+    # Left circular crest with white outer oval + hexagonal inner motif + Rx monogram
+    ring_out = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(0.24), Inches(0.10), Inches(0.50), Inches(0.50))
+    ring_out.fill.background()
+    ring_out.line.color.rgb = _rgb("#FFFFFF")
+    ring_out.line.width = Pt(1.4)
+    ring_out.name = "L2_nav_crest_outer"
+    hex_in = slide.shapes.add_shape(MSO_SHAPE.HEXAGON, Inches(0.32), Inches(0.18), Inches(0.34), Inches(0.34))
+    hex_in.fill.background()
+    hex_in.line.color.rgb = _rgb("#FFFFFF")
+    hex_in.line.width = Pt(0.9)
+    hex_in.name = "L2_nav_crest_inner"
+    add_box_text(slide, 0.24, 0.10, 0.50, 0.50, "Rx", size_pt=10.5, bold=True, color_hex="#FFFFFF", align=PP_ALIGN.CENTER, name="L3_nav_crest", ea_font=ea_f, latin_font=lat_f)
+
+    tabs_raw = (spec.nav_sections or [s.section_name for s in deck.slides if s.section_name] or ["01 背景演进", "02 构象机理", "03 药代转化"])[:6]
+    nav_start_x = 0.96
+    nav_total_w = 12.08
+    tab_w = nav_total_w / max(len(tabs_raw), 1)
+    active_idx = max(0, min(spec.active_nav_idx, len(tabs_raw) - 1))
+
+    for t_i, raw_tab in enumerate(tabs_raw):
+        tx = nav_start_x + t_i * tab_w
+        cn_lbl, en_lbl = _split_bilingual(raw_tab, t_i)
+        if t_i == active_idx:
+            trap = slide.shapes.add_shape(
+                MSO_SHAPE.TRAPEZOID,
+                Inches(tx + 0.04), Inches(0.06), Inches(tab_w - 0.08), Inches(0.66),
+            )
+            trap.fill.solid()
+            trap.fill.fore_color.rgb = _rgb("#FFFFFF")
+            trap.line.fill.background()
+            try:
+                trap.adjustments[0] = 0.055
+            except Exception:
+                pass
+            trap.name = f"L2_nav_active_{t_i}"
+            add_box_text(slide, tx + 0.14, 0.09, tab_w - 0.28, 0.30, cn_lbl, size_pt=14.0, bold=True, color_hex=pal.s1, align=PP_ALIGN.CENTER, name=f"L3_nav_tab_{t_i}", ea_font=ea_f, latin_font=lat_f)
+            add_box_text(slide, tx + 0.14, 0.39, tab_w - 0.28, 0.24, en_lbl, size_pt=9.5, bold=False, color_hex="#64748B", align=PP_ALIGN.CENTER, name=f"L3_nav_tab_en_{t_i}", ea_font=ea_f, latin_font=lat_f)
+        else:
+            sub_tint = blend_with_white(pal.s4, 0.56)
+            add_box_text(slide, tx + 0.10, 0.09, tab_w - 0.20, 0.30, cn_lbl, size_pt=13.5, bold=True, color_hex="#FFFFFF", align=PP_ALIGN.CENTER, name=f"L3_nav_tab_{t_i}", ea_font=ea_f, latin_font=lat_f)
+            add_box_text(slide, tx + 0.10, 0.39, tab_w - 0.20, 0.24, en_lbl, size_pt=9.5, bold=False, color_hex=sub_tint, align=PP_ALIGN.CENTER, name=f"L3_nav_tab_en_{t_i}", ea_font=ea_f, latin_font=lat_f)
+            if t_i < len(tabs_raw) - 1 and t_i + 1 != active_idx:
+                add_line(slide, tx + tab_w, 0.16, tx + tab_w, 0.54, color_hex=pal.s3, width_pt=0.75)
+
+    # Row 2 (T:0.84..1.28): Crisp double vector chevrons + Section Heading + Elevated Pure-White Inline Takeaway Card
+    sec_heading = _clean_section_heading(spec)
+    ch1 = slide.shapes.add_shape(MSO_SHAPE.CHEVRON, Inches(0.40), Inches(0.94), Inches(0.18), Inches(0.24))
+    ch1.fill.solid()
+    ch1.fill.fore_color.rgb = _rgb(pal.s1)
+    ch1.line.fill.background()
+    ch1.name = "L2_sec_chevron_1"
+    ch2 = slide.shapes.add_shape(MSO_SHAPE.CHEVRON, Inches(0.53), Inches(0.96), Inches(0.14), Inches(0.20))
+    ch2.fill.solid()
+    ch2.fill.fore_color.rgb = _rgb(pal.s3)
+    ch2.line.fill.background()
+    ch2.name = "L2_sec_chevron_2"
+
+    add_box_text(slide, 0.74, 0.84, 2.82, 0.44, sec_heading, size_pt=19.5, bold=True, color_hex=pal.s1, line_spacing=1.05, name="L3_title", ea_font=ea_f, latin_font=lat_f)
+
+    add_rounded_box(slide, 3.62, 0.84, 9.31, 0.44, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.14, shadow=True, name="L2_takeaway_box")
+    add_rect(slide, 3.70, 0.92, 0.06, 0.28, fill_hex=pal.s1, name="L2_takeaway_accent")
+    add_box_text(
+        slide, 3.84, 0.85, 8.96, 0.42,
+        spec.takeaway, size_pt=14.0, bold=False, color_hex=pal.ink,
+        highlight_phrase=spec.takeaway_highlight, highlight_color_hex=pal.s1,
+        align=PP_ALIGN.LEFT, line_spacing=1.08, name="L3_takeaway", ea_font=ea_f, latin_font=lat_f,
+    )
+    return 1.42
+
+
+def add_v5_bottom_banner(slide, spec: SlideSpec, deck: DeckSpec, pal: ScientificPalette) -> None:
+    """Render elevated pure-white bottom synthesis bar & refined footer."""
+    ea_f, lat_f = _fonts(deck)
+    banner = spec.bottom_banner or {}
+    mode = banner.get("mode", "bar")
+    y, h = 6.26, 0.48
+    total = len(deck.slides)
+
+    if mode == "triple_pill":
+        t_left = banner.get("left", "高选择性构象预组织")
+        t_mid = banner.get("center", spec.takeaway[:26] or "核心机理突破")
+        t_right = banner.get("right", "可逆共价低脱靶风险")
+        add_rounded_box(slide, 0.40, y, 3.65, h, fill_hex="#FFFFFF", border_hex=pal.s4, border_pt=0.85, radius=0.45, shadow=True)
+        add_box_text(slide, 0.50, y, 3.45, h, t_left, size_pt=14.0, bold=True, color_hex=pal.s1, align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+
+        add_rounded_box(slide, 4.46, y - 0.02, 4.41, h + 0.04, fill_hex="#FFFFFF", border_hex=pal.s1, border_pt=1.0, radius=0.45, shadow=True)
+        add_box_text(slide, 4.58, y - 0.02, 4.17, h + 0.04, t_mid, size_pt=14.0, bold=True, color_hex=pal.s1, align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+
+        add_rounded_box(slide, 9.28, y, 3.65, h, fill_hex="#FFFFFF", border_hex=pal.s4, border_pt=0.85, radius=0.45, shadow=True)
+        add_box_text(slide, 9.38, y, 3.45, h, t_right, size_pt=14.0, bold=True, color_hex=pal.s1, align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+
+        add_line(slide, 4.09, y + h / 2, 4.42, y + h / 2, color_hex=pal.s2, width_pt=1.5, arrow_end=True)
+        add_line(slide, 8.91, y + h / 2, 9.24, y + h / 2, color_hex=pal.s2, width_pt=1.5, arrow_end=True)
+    else:
+        border_c = "#FECACA" if mode == "rose_quote" else "#D6E0EC"
+        badge_c = "#B91C1C" if mode == "rose_quote" else pal.s1
+        add_rounded_box(slide, 0.40, y, 12.53, h, fill_hex="#FFFFFF", border_hex=border_c, border_pt=0.75, radius=0.16, shadow=True, name="L2_bottom_bar")
+        badge = banner.get("badge", "核心总结")
+        add_rounded_box(slide, 0.48, y + 0.07, 1.44, h - 0.14, fill_hex=badge_c, border_hex=None, radius=0.18)
+        add_box_text(slide, 0.48, y + 0.07, 1.44, h - 0.14, badge, size_pt=14.0, bold=True, color_hex="#FFFFFF", align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, 2.08, y, 10.72, h, banner.get("text", spec.takeaway), size_pt=14.0, bold=True, color_hex=pal.ink, align=PP_ALIGN.LEFT, ea_font=ea_f, latin_font=lat_f)
+
+    # Subtle bottom rule + citation + page counter footer (11.0 pt)
+    add_box_text(slide, 0.40, 6.90, 9.20, 0.32, spec.footer_left, size_pt=11.0, bold=False, color_hex="#64748B", name="L3_footer_left", ea_font=ea_f, latin_font=lat_f)
+    add_box_text(slide, 9.80, 6.90, 3.13, 0.32, f"{deck.meta.affiliation} · {spec.slide_no:02d}/{total:02d}", size_pt=11.0, bold=False, color_hex="#64748B", align=PP_ALIGN.RIGHT, name="L3_footer_right", ea_font=ea_f, latin_font=lat_f)
+
+
+# ---------------------------------------------------------------------------
+# 8 v5.0 Pure-White Elevated Modular Layouts
+# ---------------------------------------------------------------------------
+
+def _build_lit_overview_dual_card(slide, spec: SlideSpec, deck: DeckSpec, pal: ScientificPalette, figure_renderer: Callable) -> None:
+    ea_f, lat_f = _fonts(deck)
+    add_rounded_box(slide, 0.40, 1.48, 8.44, 4.64, fill_hex="#FFFFFF", border_hex=pal.s3, border_pt=1.0, dashed=True, radius=0.05, name="L2_left_dashed_box")
+
+    panel_title = (spec.figure_bottom_note or "药物化学结构演进与构效关系").split("|")[0]
+    add_chamfered_header_tab(slide, 1.72, 1.35, 5.80, 0.30, panel_title, fill_hex=pal.s1, ea_font=ea_f, latin_font=lat_f, name="L2_fig_pill")
+
+    # Elevated Left & Right Pure-White Molecule Frames with widened 1.34" central corridor (3.94..5.28)
+    add_rounded_box(slide, 0.52, 1.84, 3.42, 2.96, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True, name="L2_subframe_left")
+    add_rounded_box(slide, 5.28, 1.84, 3.42, 2.96, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True, name="L2_subframe_right")
+
+    if spec.figure_spec:
+        figure_renderer(slide, spec.figure_spec, pal, override_box=get_v5_figure_box(LayoutId.lit_overview_dual_card), ea_font=ea_f, latin_font=lat_f)
+        # Subtle corner micro-tags (sublabel) inside left/right molecule cards
+        tag_xs = (0.62, 5.38)
+        for idx, asset in enumerate(spec.figure_spec.assets[:2]):
+            if asset.sublabel:
+                tx = tag_xs[idx]
+                add_rounded_box(slide, tx, 1.92, 1.54, 0.24, fill_hex="#FFFFFF", border_hex=pal.s4, border_pt=0.7, radius=0.45, name=f"L2_mol_tag_{idx}")
+                add_box_text(slide, tx + 0.04, 1.92, 1.46, 0.24, asset.sublabel, size_pt=10.5, bold=True, color_hex=pal.s1, align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE, line_spacing=1.0, name=f"L3_mol_tag_{idx}", ea_font=ea_f, latin_font=lat_f)
+
+    for idx, ins in enumerate(spec.insights[:2]):
+        cx = 0.52 + idx * 4.16
+        add_rounded_box(slide, cx, 4.92, 4.02, 1.08, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.08, shadow=True, name=f"L2_left_ins_{idx}")
+        add_rect(slide, cx + 0.09, 5.04, 0.055, 0.84, fill_hex=pal.s1)
+        add_box_text(slide, cx + 0.24, 4.96, 3.68, 0.30, f"{ins.index}  {ins.heading}", size_pt=14.5, bold=True, color_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, cx + 0.24, 5.28, 3.68, 0.68, ins.body, size_pt=14.0, bold=False, color_hex=pal.ink, highlight_phrase=ins.highlight, highlight_color_hex=pal.s1, line_spacing=1.12, anchor=MSO_ANCHOR.TOP, ea_font=ea_f, latin_font=lat_f)
+
+    # Right Pure-White Elevated Dossier Card
+    prof = spec.profile_card or {}
+    add_rounded_box(slide, 8.98, 1.48, 3.95, 3.26, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True, name="L2_profile_card")
+    badge_j = prof.get("journal_badge", "SCIENCE 2021 · 文献档案")
+    add_chamfered_header_tab(slide, 9.38, 1.35, 3.15, 0.30, badge_j, fill_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+
+    p_title = prof.get("paper_title", deck.meta.deck_title[:48])
+    add_box_text(slide, 9.12, 1.80, 3.67, 0.70, p_title, size_pt=14.0, bold=True, color_hex=pal.s1, line_spacing=1.12, anchor=MSO_ANCHOR.TOP, ea_font=ea_f, latin_font=lat_f)
+    p_auth = prof.get("authors", spec.footer_left)
+    add_box_text(slide, 9.12, 2.52, 3.67, 0.30, p_auth, size_pt=11.5, bold=False, color_hex="#64748B", line_spacing=1.05, anchor=MSO_ANCHOR.TOP, name="L3_dossier_auth", ea_font=ea_f, latin_font=lat_f)
+
+    add_line(slide, 9.12, 2.88, 12.79, 2.88, color_hex="#D6E0EC", width_pt=0.8)
+
+    metrics = prof.get("metrics") or [(k.label, k.value) for k in spec.kpis[:3]] or [("Ki", "3.11 nM"), ("EC50", "74.5 nM")]
+    my = 2.96
+    for m_lbl, m_val in metrics[:4]:
+        add_box_text(slide, 9.12, my, 1.42, 0.38, m_lbl, size_pt=14.0, bold=False, color_hex=pal.ink, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, 10.56, my, 2.23, 0.38, m_val, size_pt=14.0, bold=True, color_hex=pal.s1, align=PP_ALIGN.RIGHT, ea_font=ea_f, latin_font=lat_f)
+        add_line(slide, 9.12, my + 0.40, 12.79, my + 0.40, color_hex="#E2E8F0", width_pt=0.6)
+        my += 0.43
+
+    # Bottom right pure-white elevated focus card
+    add_rounded_box(slide, 8.98, 4.88, 3.95, 1.24, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True, name="L2_focus_box")
+    add_chamfered_header_tab(slide, 9.95, 4.74, 2.01, 0.30, "设计核心", fill_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+    focus_txt = prof.get("focus_text", spec.takeaway)
+    add_box_text(slide, 9.12, 5.14, 3.67, 0.90, focus_txt, size_pt=14.0, bold=False, color_hex=pal.ink, line_spacing=1.12, anchor=MSO_ANCHOR.TOP, ea_font=ea_f, latin_font=lat_f)
+
+
+def _build_mechanism_3col_flow(slide, spec: SlideSpec, deck: DeckSpec, pal: ScientificPalette, figure_renderer: Callable) -> None:
+    """3 clean elevated pure-white columns connected by refined arrows & anchor-dotted leader callouts."""
+    ea_f, lat_f = _fonts(deck)
+
+    # Left Column
+    add_rounded_box(slide, 0.40, 1.54, 3.25, 4.58, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True)
+    add_chamfered_header_tab(slide, 0.88, 1.39, 2.30, 0.30, "关键药效团解析", fill_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+
+    l_cards = spec.left_cards or [{"heading": i.heading, "body": i.body} for i in spec.insights[:3]]
+    for idx, lc in enumerate(l_cards[:3]):
+        cy = 1.90 + idx * 1.38
+        add_rect(slide, 0.54, cy + 0.08, 0.055, 1.06, fill_hex=pal.s1)
+        add_box_text(slide, 0.68, cy, 2.84, 0.34, lc.get("heading", ""), size_pt=14.5, bold=True, color_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, 0.68, cy + 0.36, 2.84, 0.84, lc.get("body", ""), size_pt=14.0, bold=False, color_hex=pal.ink, line_spacing=1.12, anchor=MSO_ANCHOR.TOP, ea_font=ea_f, latin_font=lat_f)
+        if idx < 2:
+            add_line(slide, 0.56, cy + 1.28, 3.48, cy + 1.28, color_hex="#E2E8F0", width_pt=0.7)
+
+    # Refined Connector Arrow Left -> Center
+    arr_l = slide.shapes.add_shape(MSO_SHAPE.RIGHT_ARROW, Inches(3.71), Inches(3.70), Inches(0.18), Inches(0.24))
+    arr_l.fill.solid()
+    arr_l.fill.fore_color.rgb = _rgb(pal.s1)
+    arr_l.line.fill.background()
+
+    # Center Column (pure-white dashed frame + 3D figure + anchor-dotted callout pills)
+    add_rounded_box(slide, 3.95, 1.50, 5.44, 4.64, fill_hex="#FFFFFF", border_hex=pal.s3, border_pt=1.05, dashed=True, radius=0.06, shadow=True)
+    add_chamfered_header_tab(slide, 5.02, 1.36, 3.30, 0.30, "三维构象与口袋结合模式", fill_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+
+    if spec.figure_spec:
+        figure_renderer(slide, spec.figure_spec, pal, override_box=get_v5_figure_box(LayoutId.mechanism_3col_flow), ea_font=ea_f, latin_font=lat_f)
+
+    for idx, cb in enumerate(spec.callout_badges[:4]):
+        bx = float(cb.get("x_in", 4.05))
+        by = float(cb.get("y_in", 1.78))
+        bw = max(1.68, float(cb.get("w_in", 1.82)))
+        bh = 0.34
+        c_hex = pal.token(cb.get("color_token", "s1"))
+        if "target_x_in" in cb and "target_y_in" in cb:
+            tx_t = float(cb["target_x_in"])
+            ty_t = float(cb["target_y_in"])
+            start_y = (by + bh) if ty_t > (by + bh * 0.5) else by
+            add_line(slide, bx + bw * 0.5, start_y, tx_t, ty_t, color_hex=c_hex, width_pt=1.15, dashed=True)
+            dot = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(tx_t - 0.045), Inches(ty_t - 0.045), Inches(0.09), Inches(0.09))
+            dot.fill.solid()
+            dot.fill.fore_color.rgb = _rgb(c_hex)
+            dot.line.color.rgb = _rgb("#FFFFFF")
+            dot.line.width = Pt(1.0)
+            dot.name = f"L2_callout_dot_{idx}"
+        add_rounded_box(slide, bx, by, bw, bh, fill_hex="#FFFFFF", border_hex=c_hex, border_pt=1.0, radius=0.45, shadow=True, name=f"L2_callout_{idx}")
+        add_box_text(slide, bx + 0.04, by, bw - 0.08, bh, str(cb.get("text", "")), size_pt=14.0, bold=True, color_hex=c_hex, align=PP_ALIGN.CENTER, name=f"L3_callout_{idx}", ea_font=ea_f, latin_font=lat_f)
+
+    # Refined Connector Arrow Center -> Right
+    arr_r = slide.shapes.add_shape(MSO_SHAPE.RIGHT_ARROW, Inches(9.45), Inches(3.70), Inches(0.18), Inches(0.24))
+    arr_r.fill.solid()
+    arr_r.fill.fore_color.rgb = _rgb(pal.s1)
+    arr_r.line.fill.background()
+
+    # Right Column
+    add_rounded_box(slide, 9.69, 1.54, 3.25, 4.58, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True)
+    add_chamfered_header_tab(slide, 10.17, 1.39, 2.30, 0.30, "关键结构优势", fill_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+
+    r_chain = spec.right_chain or [{"title": k.value, "body": k.label} for k in spec.kpis[:2]] + [{"title": "高选择性", "body": "低脱靶与口服稳定"}]
+    for idx, rc in enumerate(r_chain[:3]):
+        ry = 1.94 + idx * 1.38
+        add_rounded_box(slide, 9.83, ry, 2.97, 1.04, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.08, shadow=True)
+        add_box_text(slide, 9.93, ry + 0.08, 2.77, 0.34, rc.get("title", ""), size_pt=14.5, bold=True, color_hex=pal.s1, align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, 9.93, ry + 0.44, 2.77, 0.54, rc.get("body", ""), size_pt=14.0, bold=False, color_hex=pal.ink, align=PP_ALIGN.CENTER, line_spacing=1.10, ea_font=ea_f, latin_font=lat_f)
+        if idx < 2:
+            d_arr = slide.shapes.add_shape(MSO_SHAPE.DOWN_ARROW, Inches(11.19), Inches(ry + 1.08), Inches(0.24), Inches(0.24))
+            d_arr.fill.solid()
+            d_arr.fill.fore_color.rgb = _rgb(pal.s2)
+            d_arr.line.fill.background()
+
+
+def _build_data_dashboard_table(slide, spec: SlideSpec, deck: DeckSpec, pal: ScientificPalette, figure_renderer: Callable) -> None:
+    ea_f, lat_f = _fonts(deck)
+    add_rounded_box(slide, 0.40, 1.50, 7.58, 4.64, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True, name="L2_left_dashboard")
+    add_chamfered_header_tab(slide, 2.10, 1.36, 4.18, 0.30, "定量药代动力学指标与可编辑柱图", fill_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+
+    kpis = spec.kpis[:3] or [
+        {"value": "34–50%", "label": "大鼠口服生物利用度", "color_token": "s1"},
+        {"value": "35×", "label": "较先导暴露提升", "color_token": "s2"},
+        {"value": "5.1 h", "label": "大鼠半衰期 t1/2", "color_token": "s1"},
+    ]
+    tile_w = 2.34
+    for idx, kp in enumerate(kpis[:3]):
+        val = kp.value if hasattr(kp, "value") else kp["value"]
+        lbl = kp.label if hasattr(kp, "label") else kp["label"]
+        ctok = kp.color_token if hasattr(kp, "color_token") else kp.get("color_token", "s1")
+        tx = 0.54 + idx * 2.48
+        add_rounded_box(slide, tx, 1.84, tile_w, 0.88, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.08, shadow=True)
+        add_rect(slide, tx + 0.08, 1.96, 0.06, 0.64, fill_hex=pal.token(ctok), name=f"L2_kpi_bar_{idx}")
+        add_box_text(slide, tx + 0.16, 1.90, tile_w - 0.24, 0.42, val, size_pt=22.0, bold=True, color_hex=pal.token(ctok), align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, tx + 0.16, 2.34, tile_w - 0.24, 0.34, lbl, size_pt=14.0, bold=False, color_hex=pal.muted, align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+
+    if spec.figure_spec:
+        figure_renderer(slide, spec.figure_spec, pal, override_box=get_v5_figure_box(LayoutId.data_dashboard_table), ea_font=ea_f, latin_font=lat_f)
+
+    td = spec.table_data
+    table_bottom = 3.92
+    if td and td.headers:
+        rows_count = len(td.rows) + 1
+        cols_count = len(td.headers)
+        row_h = min(0.46, 2.38 / max(rows_count, 2))
+        t_shape = slide.shapes.add_table(rows_count, cols_count, Inches(8.12), Inches(1.50), Inches(4.81), Inches(row_h * rows_count))
+        tbl = t_shape.table
+        apply_zebra_table_borders(tbl, header_bg_hex=pal.s1, stripe_bg_hex="#FFFFFF", border_hex="#E2E8F0")
+        for c_i, hdr in enumerate(td.headers):
+            cell = tbl.cell(0, c_i)
+            cell.text_frame.word_wrap = True
+            p = cell.text_frame.paragraphs[0]
+            populate_paragraph(p, hdr, size_pt=14.0, bold=True, color_hex="#FFFFFF", align=PP_ALIGN.CENTER if c_i > 0 else PP_ALIGN.LEFT, line_spacing=1.05, ea_font=ea_f, latin_font=lat_f)
+        for r_i, row in enumerate(td.rows):
+            for c_i, val in enumerate(row[:cols_count]):
+                cell = tbl.cell(r_i + 1, c_i)
+                cell.text_frame.word_wrap = True
+                p = cell.text_frame.paragraphs[0]
+                populate_paragraph(p, val, size_pt=14.0, bold=(c_i == cols_count - 1), color_hex=pal.s1 if c_i == cols_count - 1 else pal.ink, align=PP_ALIGN.CENTER if c_i > 0 else PP_ALIGN.LEFT, line_spacing=1.05, ea_font=ea_f, latin_font=lat_f)
+        table_bottom = 1.50 + row_h * rows_count
+
+    scards = spec.strategy_cards or [
+        {"badge": "代谢瓶颈", "badge_color": "#D97706", "title": ins.heading, "body": ins.body}
+        for ins in spec.insights[:2]
+    ]
+    cur_y = table_bottom + 0.14
+    avail_h = max(0.88, (6.14 - cur_y - 0.10 * max(len(scards) - 1, 0)) / max(len(scards), 1))
+    for idx, sc in enumerate(scards[:2]):
+        sy = cur_y + idx * (avail_h + 0.10)
+        bcol = sc.get("badge_color", pal.s1)
+        add_rounded_box(slide, 8.12, sy, 4.81, avail_h, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True)
+        add_rect(slide, 8.20, sy + 0.12, 0.06, avail_h - 0.24, fill_hex=bcol)
+        add_rounded_box(slide, 8.34, sy + 0.10, 1.14, 0.28, fill_hex=bcol, border_hex=None, radius=0.14)
+        add_box_text(slide, 8.34, sy + 0.10, 1.14, 0.28, sc.get("badge", "策略"), size_pt=14.0, bold=True, color_hex="#FFFFFF", align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, 9.56, sy + 0.08, 3.26, 0.32, sc.get("title", ""), size_pt=14.5, bold=True, color_hex=pal.ink, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, 8.34, sy + 0.44, 4.46, avail_h - 0.50, sc.get("body", ""), size_pt=14.0, bold=False, color_hex=pal.muted, line_spacing=1.08, anchor=MSO_ANCHOR.TOP, ea_font=ea_f, latin_font=lat_f)
+
+
+def _build_bg_top_summary_3box(slide, spec: SlideSpec, deck: DeckSpec, pal: ScientificPalette, figure_renderer: Callable) -> None:
+    ea_f, lat_f = _fonts(deck)
+    add_rounded_box(slide, 0.40, 1.54, 12.53, 1.04, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True)
+    lines = spec.pain_points[:3] or [f"•  {ins.heading}：{ins.body}" for ins in spec.insights[:3]]
+    for idx, ln in enumerate(lines[:3]):
+        add_box_text(slide, 0.58, 1.58 + idx * 0.32, 12.16, 0.32, ln, size_pt=14.0, bold=False, color_hex=pal.ink, line_spacing=1.05, ea_font=ea_f, latin_font=lat_f)
+
+    boxes = [
+        (0.40, 3.82, spec.left_cards[0].get("heading", "01 核心痛点") if spec.left_cards else "01 核心痛点"),
+        (4.50, 4.30, "02 多尺度科研图解"),
+        (9.08, 3.85, spec.right_chain[0].get("title", "03 研究目标") if spec.right_chain else "03 预期突破"),
+    ]
+    for bx, bw, btitle in boxes:
+        add_rounded_box(slide, bx, 2.74, bw, 3.36, fill_hex="#FFFFFF", border_hex=pal.s3, border_pt=1.0, dashed=True, radius=0.05, shadow=True)
+        add_chamfered_header_tab(slide, bx + 0.45, 2.64, bw - 0.90, 0.30, btitle, fill_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+
+    for ax in (4.24, 8.82):
+        arr = slide.shapes.add_shape(MSO_SHAPE.RIGHT_ARROW, Inches(ax), Inches(4.24), Inches(0.22), Inches(0.28))
+        arr.fill.solid()
+        arr.fill.fore_color.rgb = _rgb(pal.s1)
+        arr.line.fill.background()
+
+    for idx, ins in enumerate(spec.insights[:2]):
+        add_rounded_box(slide, 0.56, 3.16 + idx * 1.38, 3.50, 1.24, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True)
+        add_box_text(slide, 0.70, 3.22 + idx * 1.38, 3.22, 0.32, ins.heading, size_pt=14.5, bold=True, color_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, 0.70, 3.56 + idx * 1.38, 3.22, 0.78, ins.body, size_pt=14.0, color_hex=pal.ink, line_spacing=1.08, anchor=MSO_ANCHOR.TOP, ea_font=ea_f, latin_font=lat_f)
+
+    r_items = spec.right_chain or [{"title": k.value, "body": k.label} for k in spec.kpis[:2]]
+    for idx, rc in enumerate(r_items[:2]):
+        add_rounded_box(slide, 9.24, 3.16 + idx * 1.38, 3.53, 1.24, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True)
+        add_box_text(slide, 9.38, 3.24 + idx * 1.38, 3.25, 0.34, rc.get("title", ""), size_pt=14.5, bold=True, color_hex=pal.s1, align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, 9.38, 3.60 + idx * 1.38, 3.25, 0.72, rc.get("body", ""), size_pt=14.0, color_hex=pal.ink, align=PP_ALIGN.CENTER, line_spacing=1.08, anchor=MSO_ANCHOR.TOP, ea_font=ea_f, latin_font=lat_f)
+
+    if spec.figure_spec:
+        figure_renderer(slide, spec.figure_spec, pal, override_box=get_v5_figure_box(LayoutId.bg_top_summary_3box), ea_font=ea_f, latin_font=lat_f)
+
+
+def _build_pain_points_left_arrows(slide, spec: SlideSpec, deck: DeckSpec, pal: ScientificPalette, figure_renderer: Callable) -> None:
+    ea_f, lat_f = _fonts(deck)
+    pts = spec.pain_points or [f"{ins.heading}：{ins.body}" for ins in spec.insights[:4]]
+    n = min(4, max(2, len(pts)))
+    row_h = min(1.04, (4.48 - 0.14 * (n - 1)) / n)
+    for idx, pt in enumerate(pts[:4]):
+        ry = 1.56 + idx * (row_h + 0.14)
+        add_rounded_box(slide, 0.40, ry, 5.06, row_h, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.08, shadow=True)
+        add_rect(slide, 0.48, ry + 0.14, 0.06, row_h - 0.28, fill_hex=pal.s1)
+        add_box_text(slide, 0.64, ry + 0.06, 4.28, row_h - 0.12, pt, size_pt=14.0, color_hex=pal.ink, line_spacing=1.10, ea_font=ea_f, latin_font=lat_f)
+        circ = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(4.98), Inches(ry + row_h / 2 - 0.18), Inches(0.36), Inches(0.36))
+        circ.fill.solid()
+        circ.fill.fore_color.rgb = _rgb(pal.s1)
+        circ.line.fill.background()
+        add_box_text(slide, 4.98, ry + row_h / 2 - 0.18, 0.36, 0.36, "→", size_pt=14.0, bold=True, color_hex="#FFFFFF", align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+
+    add_rounded_box(slide, 5.66, 1.54, 7.27, 4.58, fill_hex="#FFFFFF", border_hex=pal.s3, border_pt=1.0, dashed=True, radius=0.05, shadow=True)
+    add_chamfered_header_tab(slide, 7.46, 1.42, 3.68, 0.30, "关键科学问题与微界面机制", fill_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+
+    if spec.figure_spec:
+        figure_renderer(slide, spec.figure_spec, pal, override_box=get_v5_figure_box(LayoutId.pain_points_left_arrows), ea_font=ea_f, latin_font=lat_f)
+
+    chips = spec.figure_chips or ["限域调控", "低能垒", "高分散", "定量互证"]
+    cw = 6.94 / max(len(chips[:4]), 1)
+    for idx, ch in enumerate(chips[:4]):
+        cx = 5.82 + idx * cw
+        add_rounded_box(slide, cx + 0.04, 5.18, cw - 0.08, 0.38, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.14, shadow=True)
+        add_box_text(slide, cx + 0.04, 5.18, cw - 0.08, 0.38, ch, size_pt=14.0, bold=True, color_hex=pal.ink, align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+
+    note = spec.figure_bottom_note or spec.takeaway
+    add_box_text(slide, 5.82, 5.64, 6.94, 0.40, note, size_pt=14.0, bold=True, color_hex=pal.alert, align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+
+
+def _build_fig_left_3step_chain(slide, spec: SlideSpec, deck: DeckSpec, pal: ScientificPalette, figure_renderer: Callable) -> None:
+    ea_f, lat_f = _fonts(deck)
+    add_rounded_box(slide, 0.40, 1.54, 7.76, 4.58, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.05, shadow=True)
+    add_chamfered_header_tab(slide, 2.28, 1.41, 4.00, 0.30, spec.section_name[:16] or "多尺度表征与实验验证", fill_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+
+    if spec.figure_spec:
+        figure_renderer(slide, spec.figure_spec, pal, override_box=get_v5_figure_box(LayoutId.fig_left_3step_chain), ea_font=ea_f, latin_font=lat_f)
+
+    chain = spec.right_chain or [{"title": ins.heading, "body": ins.body} for ins in spec.insights[:3]]
+    for idx, item in enumerate(chain[:3]):
+        ry = 1.56 + idx * 1.56
+        add_rounded_box(slide, 8.34, ry, 1.16, 1.24, fill_hex=pal.s1, border_hex=None, radius=0.08)
+        add_box_text(slide, 8.38, ry, 1.08, 1.24, item.get("title", f"阶段 {idx+1}"), size_pt=14.0, bold=True, color_hex="#FFFFFF", align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+        add_rounded_box(slide, 9.58, ry, 3.35, 1.24, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.08, shadow=True)
+        add_box_text(slide, 9.70, ry + 0.08, 3.11, 1.08, item.get("body", ""), size_pt=14.0, color_hex=pal.ink, line_spacing=1.10, ea_font=ea_f, latin_font=lat_f)
+        if idx < 2:
+            arr = slide.shapes.add_shape(MSO_SHAPE.DOWN_ARROW, Inches(10.50), Inches(ry + 1.27), Inches(0.32), Inches(0.26))
+            arr.fill.solid()
+            arr.fill.fore_color.rgb = _rgb(pal.s2)
+            arr.line.fill.background()
+
+
+def _build_vs_center_wing(slide, spec: SlideSpec, deck: DeckSpec, pal: ScientificPalette, figure_renderer: Callable) -> None:
+    ea_f, lat_f = _fonts(deck)
+    l_cards = spec.left_cards or [{"heading": "传统路径 / 对照", "body": ins.body} for ins in spec.insights[:2]]
+    r_cards = spec.right_chain or [{"title": "创新策略 / 优势", "body": k.label + " " + k.value} for k in spec.kpis[:2]]
+
+    for idx, lc in enumerate(l_cards[:2]):
+        cy = 1.58 + idx * 2.26
+        add_rounded_box(slide, 0.40, cy, 3.20, 2.08, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.08, shadow=True)
+        add_chamfered_header_tab(slide, 0.72, cy - 0.12, 2.56, 0.30, lc.get("heading", ""), fill_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, 0.54, cy + 0.34, 2.92, 1.62, lc.get("body", ""), size_pt=14.0, color_hex=pal.ink, line_spacing=1.12, anchor=MSO_ANCHOR.TOP, ea_font=ea_f, latin_font=lat_f)
+
+    add_rounded_box(slide, 3.76, 1.54, 5.80, 4.58, fill_hex="#FFFFFF", border_hex=pal.s3, border_pt=1.0, dashed=True, radius=0.06, shadow=True)
+    if spec.figure_spec:
+        figure_renderer(slide, spec.figure_spec, pal, override_box=get_v5_figure_box(LayoutId.vs_center_wing), ea_font=ea_f, latin_font=lat_f)
+
+    for idx, rc in enumerate(r_cards[:2]):
+        cy = 1.58 + idx * 2.26
+        add_rounded_box(slide, 9.72, cy, 3.21, 2.08, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.08, shadow=True)
+        add_chamfered_header_tab(slide, 10.04, cy - 0.12, 2.56, 0.30, rc.get("title", ""), fill_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, 9.86, cy + 0.34, 2.93, 1.62, rc.get("body", ""), size_pt=14.0, color_hex=pal.ink, line_spacing=1.12, anchor=MSO_ANCHOR.TOP, ea_font=ea_f, latin_font=lat_f)
+
+
+def _build_roadmap_layered_matrix(slide, spec: SlideSpec, deck: DeckSpec, pal: ScientificPalette, figure_renderer: Callable) -> None:
+    ea_f, lat_f = _fonts(deck)
+    row_tags = ["研究目标", "技术路线", "验证方案"]
+    for idx, tag in enumerate(row_tags):
+        ry = 1.54 + idx * 1.54
+        add_rounded_box(slide, 0.40, ry, 0.82, 1.38, fill_hex=pal.s1, border_hex=None, radius=0.08)
+        add_box_text(slide, 0.42, ry, 0.78, 1.38, tag, size_pt=14.0, bold=True, color_hex="#FFFFFF", align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+        add_rounded_box(slide, 1.30, ry, 7.58, 1.38, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True)
+
+    if spec.figure_spec:
+        figure_renderer(slide, spec.figure_spec, pal, override_box=get_v5_figure_box(LayoutId.roadmap_layered_matrix), ea_font=ea_f, latin_font=lat_f)
+
+    add_rounded_box(slide, 9.06, 1.54, 3.87, 4.58, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True)
+    add_chamfered_header_tab(slide, 9.72, 1.39, 2.55, 0.30, "闭环实施与转化路径", fill_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+
+    nodes = spec.right_chain or [{"title": ins.heading, "body": ""} for ins in spec.insights[:3]] + [{"title": "定量成果产出", "body": ""}]
+    for idx, nd in enumerate(nodes[:4]):
+        ny = 2.02 + idx * 0.98
+        add_rounded_box(slide, 9.30, ny, 3.39, 0.68, fill_hex="#FFFFFF", border_hex=pal.s1 if idx == 3 else "#D6E0EC", border_pt=1.0 if idx == 3 else 0.75, radius=0.45, shadow=True)
+        add_box_text(slide, 9.42, ny, 3.15, 0.68, nd.get("title", ""), size_pt=14.0, bold=True, color_hex=pal.s1 if idx == 3 else pal.ink, align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+
+
+_V5_DISPATCH = {
+    LayoutId.lit_overview_dual_card: _build_lit_overview_dual_card,
+    LayoutId.mechanism_3col_flow: _build_mechanism_3col_flow,
+    LayoutId.data_dashboard_table: _build_data_dashboard_table,
+    LayoutId.bg_top_summary_3box: _build_bg_top_summary_3box,
+    LayoutId.pain_points_left_arrows: _build_pain_points_left_arrows,
+    LayoutId.fig_left_3step_chain: _build_fig_left_3step_chain,
+    LayoutId.vs_center_wing: _build_vs_center_wing,
+    LayoutId.roadmap_layered_matrix: _build_roadmap_layered_matrix,
+}
+
+
+def build_v5_content_slide(
+    slide,
+    spec: SlideSpec,
+    deck: DeckSpec,
+    pal: ScientificPalette,
+    total_slides: int,
+    figure_renderer: Callable,
+) -> bool:
+    """Build any of the 8 v5.0 pure-white elevated layouts cleanly. Returns True if handled."""
+    builder = _V5_DISPATCH.get(spec.layout_id)
+    if builder is None:
+        return False
+    add_v5_header(slide, spec, deck, pal, total_slides)
+    builder(slide, spec, deck, pal, figure_renderer)
+    add_v5_bottom_banner(slide, spec, deck, pal)
+    return True

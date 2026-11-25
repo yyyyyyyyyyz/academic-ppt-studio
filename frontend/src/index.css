@@ -1,0 +1,201 @@
+:root {
+  --paper-bg: #FAF9F6;
+  --surface-pure: #FFFFFF;
+  --surface-tint: #F3F1EC;
+  --ink-primary: #171717;
+  --ink-secondary: #4A4A48;
+  --ink-muted: #787670;
+  --rule-hairline: #E3E0D8;
+  --rule-strong: #171717;
+  --nature-crimson: #B5121B;
+  --oxford-navy: #00468B;
+  --audit-sage: #1D6B48;
+
+  --font-serif: "Newsreader", "Noto Serif SC", "Source Han Serif SC", Georgia, "Songti SC", "SimSun", serif;
+  --font-sans: "Inter", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", Consolas, "Courier New", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--paper-bg);
+  color: var(--ink-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.font-serif {
+  font-family: var(--font-serif);
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.kicker {
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.btn-editorial-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 9px 18px;
+  border-radius: 2px;
+  border: 1px solid var(--ink-primary);
+  background: var(--ink-primary);
+  color: #ffffff;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.btn-editorial-primary:hover:not(:disabled) {
+  background: var(--nature-crimson);
+  border-color: var(--nature-crimson);
+}
+
+.btn-editorial-primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn-editorial-navy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 9px 18px;
+  border-radius: 2px;
+  border: 1px solid var(--oxford-navy);
+  background: var(--oxford-navy);
+  color: #ffffff;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+
+.btn-editorial-navy:hover:not(:disabled) {
+  background: #00356B;
+  border-color: #00356B;
+}
+
+.btn-editorial-navy:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn-editorial-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 2px;
+  border: 1px solid #D5D1C8;
+  background: var(--surface-pure);
+  color: var(--ink-primary);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.btn-editorial-ghost:hover:not(:disabled) {
+  background: var(--surface-tint);
+  border-color: var(--ink-primary);
+}
+
+.btn-editorial-ghost:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.editorial-input,
+.editorial-select,
+.editorial-textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 2px;
+  border: 1px solid #D6D2C8;
+  background: var(--surface-pure);
+  color: var(--ink-primary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.editorial-input:focus,
+.editorial-select:focus,
+.editorial-textarea:focus {
+  border-color: var(--ink-primary);
+  box-shadow: 0 0 0 2px rgba(23, 23, 23, 0.06);
+}
+
+.alpha-checkerboard {
+  background-color: #ffffff;
+  background-image:
+    linear-gradient(45deg, #F5F3EE 25%, transparent 25%),
+    linear-gradient(-45deg, #F5F3EE 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #F5F3EE 75%),
+    linear-gradient(-45deg, transparent 75%, #F5F3EE 75%);
+  background-size: 14px 14px;
+  background-position: 0 0, 0 7px, 7px -7px, -7px 0;
+}
+
+/* Subtle archival scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #D6D2C8;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #A8A49B;
+}
+
+@keyframes editorialFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.editorial-fade-in {
+  animation: editorialFadeIn 180ms ease-out;
+}

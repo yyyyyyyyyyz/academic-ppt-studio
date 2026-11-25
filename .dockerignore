@@ -1,0 +1,16 @@
+.git
+.gitignore
+.venv
+backend/.venv
+backend/.pytest_cache
+frontend/node_modules
+frontend/dist
+frontend/.vite
+artifacts/decks
+artifacts/tmp
+**/__pycache__
+*.pyc
+*.pyo
+.env
+.env.*
+start_share.ps1
