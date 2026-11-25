@@ -13,6 +13,7 @@ import {
   syncWordToPptx,
   uploadCustomFigure,
 } from "./api/client";
+import { formatPaletteLabel, resolvePaletteAccent } from "./types/deckSpec";
 import type {
   ArchetypeId,
   ArchetypeInfo,
@@ -484,8 +485,7 @@ export function App() {
 
   const previewKey = currentSlide ? `slide_${String(currentSlide.slide_no).padStart(2, "0")}` : "";
   const activePlate = CURATED_PLATES[featuredPlateIdx] || CURATED_PLATES[0];
-  const activePaletteObj = deck ? palettes.find((p) => p.id === deck.meta.palette_id) : undefined;
-  const activeAccent = activePaletteObj?.tokens?.s1 || "#B5121B";
+  const activeAccent = deck ? resolvePaletteAccent(deck.meta.palette_id, palettes) : "#B5121B";
 
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--paper-bg)" }}>
@@ -594,7 +594,7 @@ export function App() {
                 />
                 <span>配色</span>
                 <span className="font-mono" style={{ fontSize: 11, color: activeAccent, fontWeight: 700 }}>
-                  {deck.meta.palette_id}
+                  {formatPaletteLabel(deck.meta.palette_id, palettes)}
                 </span>
               </button>
               <button

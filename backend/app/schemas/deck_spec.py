@@ -54,6 +54,11 @@ class LayoutId(str, Enum):
     fig_left_3step_chain = "fig_left_3step_chain"
     vs_center_wing = "vs_center_wing"
     roadmap_layered_matrix = "roadmap_layered_matrix"
+    timeline_chevron_flow = "timeline_chevron_flow"
+    quadrant_2x2_matrix = "quadrant_2x2_matrix"
+    hub_spoke_radial = "hub_spoke_radial"
+    dual_compare_cards = "dual_compare_cards"
+    tri_column_showcase = "tri_column_showcase"
     closing = "closing"
 
 
@@ -66,6 +71,11 @@ V5_LAYOUT_IDS = frozenset({
     LayoutId.fig_left_3step_chain,
     LayoutId.vs_center_wing,
     LayoutId.roadmap_layered_matrix,
+    LayoutId.timeline_chevron_flow,
+    LayoutId.quadrant_2x2_matrix,
+    LayoutId.hub_spoke_radial,
+    LayoutId.dual_compare_cards,
+    LayoutId.tri_column_showcase,
 })
 
 

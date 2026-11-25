@@ -33,6 +33,11 @@ export type LayoutId =
   | "fig_left_3step_chain"
   | "vs_center_wing"
   | "roadmap_layered_matrix"
+  | "timeline_chevron_flow"
+  | "quadrant_2x2_matrix"
+  | "hub_spoke_radial"
+  | "dual_compare_cards"
+  | "tri_column_showcase"
   | "closing";
 
 export type ArchetypeId =
@@ -281,4 +286,73 @@ export interface AssetUrlBundle {
     vlm_aesthetic_score: number;
     passed: boolean;
   }>;
+}
+
+function normalizeHex6(raw: string, fallback = "00468B"): string {
+  const clean = (raw || "").trim().replace(/^#/, "");
+  return /^[0-9A-Fa-f]{6}$/.test(clean) ? clean.toUpperCase() : fallback;
+}
+
+function mixWithWhite(hexStr: string, factor: number): string {
+  const h = normalizeHex6(hexStr);
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  const nr = Math.round(r + (255 - r) * factor);
+  const ng = Math.round(g + (255 - g) * factor);
+  const nb = Math.round(b + (255 - b) * factor);
+  return `#${nr.toString(16).padStart(2, "0").toUpperCase()}${ng.toString(16).padStart(2, "0").toUpperCase()}${nb.toString(16).padStart(2, "0").toUpperCase()}`;
+}
+
+export function buildCustomHexRamp(hex: string): string[] {
+  const h = normalizeHex6(hex);
+  const base = `#${h}`;
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  const luma = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0;
+  const s1 = luma > 0.72
+    ? `#${Math.round(r * 0.75).toString(16).padStart(2, "0")}${Math.round(g * 0.75).toString(16).padStart(2, "0")}${Math.round(b * 0.75).toString(16).padStart(2, "0")}`.toUpperCase()
+    : base;
+  return [
+    s1,
+    mixWithWhite(s1, 0.18),
+    mixWithWhite(s1, 0.38),
+    mixWithWhite(s1, 0.60),
+    mixWithWhite(s1, 0.80),
+    mixWithWhite(s1, 0.92),
+  ];
+}
+
+export function resolvePaletteAccent(paletteId: string, palettes: PaletteInfo[]): string {
+  if (paletteId?.toLowerCase().startsWith("custom_")) {
+    const part = paletteId.slice(7).split("_")[0] || "";
+    if (/^[0-9A-Fa-f]{6}$/.test(part)) {
+      return buildCustomHexRamp(part)[0];
+    }
+  }
+  const found = palettes.find((p) => p.id === paletteId);
+  return found?.tokens?.s1 || "#00468B";
+}
+
+export function resolvePaletteTint(paletteId: string, palettes: PaletteInfo[]): string {
+  if (paletteId?.toLowerCase().startsWith("custom_")) {
+    const part = paletteId.slice(7).split("_")[0] || "";
+    if (/^[0-9A-Fa-f]{6}$/.test(part)) {
+      return buildCustomHexRamp(part)[3];
+    }
+  }
+  const found = palettes.find((p) => p.id === paletteId);
+  return found?.tokens?.s4 || "#72A6D5";
+}
+
+export function formatPaletteLabel(paletteId: string, palettes: PaletteInfo[]): string {
+  if (paletteId?.toLowerCase().startsWith("custom_")) {
+    const part = paletteId.slice(7).split("_")[0] || "";
+    if (/^[0-9A-Fa-f]{6}$/.test(part)) {
+      return `#${part.toUpperCase()}`;
+    }
+  }
+  const found = palettes.find((p) => p.id === paletteId);
+  return found ? found.name : paletteId;
 }

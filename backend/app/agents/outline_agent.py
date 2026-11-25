@@ -174,6 +174,11 @@ class OutlineAgent:
         styles_3d = ["ball_stick", "pymol_neon_green", "metallic_studio", "stick_clean"]
         layouts = [
             LayoutId.bg_top_summary_3box.value,
+            LayoutId.dual_compare_cards.value,
+            LayoutId.hub_spoke_radial.value,
+            LayoutId.timeline_chevron_flow.value,
+            LayoutId.quadrant_2x2_matrix.value,
+            LayoutId.tri_column_showcase.value,
             LayoutId.lit_overview_dual_card.value,
             LayoutId.mechanism_3col_flow.value,
             LayoutId.data_dashboard_table.value if not is_proposal else LayoutId.fig_left_3step_chain.value,
@@ -247,7 +252,7 @@ class OutlineAgent:
             "title": title,
             "summary": core["summary"],
             "engine_used": engine_used,
-            "skill_name": "word-to-ppt-outline/v1",
+            "skill_name": "word-to-ppt-outline/v2",
             "slide_count": n_total,
             "content_slide_count": len(slides),
             "detected_compounds": [{"name": lbl, "smiles": smi} for lbl, smi in compounds[:12]],

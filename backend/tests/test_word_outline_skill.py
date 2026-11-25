@@ -149,7 +149,7 @@ def test_outline_from_docx_local_and_llm_mock(tmp_path: Path, monkeypatch) -> No
     assert r_llm.status_code == 200, r_llm.text
     d_llm = r_llm.json()
     assert d_llm["engine_used"] == "openai"
-    assert len(captured_prompts) == 1 and "word-to-ppt-outline/v1" in captured_prompts[0]
+    assert len(captured_prompts) == 1 and "word-to-ppt-outline/" in captured_prompts[0]
     assert d_llm["slides"][0]["smiles"] != ""
     assert d_llm["slides"][1]["visual_mode"] == "3d"
     assert "Osimertinib 诱发 C797S 耐药" in d_llm["outline_markdown"]

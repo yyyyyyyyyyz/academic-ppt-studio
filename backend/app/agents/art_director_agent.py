@@ -251,9 +251,19 @@ class ArtDirectorAgent:
         if slide.table_data is not None:
             return LayoutId.data_dashboard_table
         txt = f"{slide.section_name} {slide.title} {slide.takeaway}".lower()
+        if any(k in txt for k in ("时间", "进度", "流程", "步骤", "阶段", "timeline")):
+            return LayoutId.timeline_chevron_flow
+        if any(k in txt for k in ("四象限", "象限", "矩阵", "创新", "风险", "策略", "多维")):
+            return LayoutId.quadrant_2x2_matrix
+        if any(k in txt for k in ("思路", "体系", "框架", "总体", "核心构筑", "拓扑")):
+            return LayoutId.hub_spoke_radial
+        if any(k in txt for k in ("国内外", "传统", "优缺点", "比较", "差异", "pk")):
+            return LayoutId.dual_compare_cards
+        if any(k in txt for k in ("三大", "意义", "亮点", "成果", "柱状", "模块")):
+            return LayoutId.tri_column_showcase
         if any(k in txt for k in ("文献", "综述", "演进", "构效", "sar")):
             return LayoutId.lit_overview_dual_card
-        if any(k in txt for k in ("背景", "立题", "绪论", "意义")):
+        if any(k in txt for k in ("背景", "立题", "绪论")):
             return LayoutId.bg_top_summary_3box
         if any(k in txt for k in ("空白", "痛点", "现状", "问题", "挑战")):
             return LayoutId.pain_points_left_arrows if content_index % 2 == 1 else LayoutId.vs_center_wing
@@ -268,6 +278,11 @@ class ArtDirectorAgent:
 
         rotation = [
             LayoutId.bg_top_summary_3box,
+            LayoutId.dual_compare_cards,
+            LayoutId.hub_spoke_radial,
+            LayoutId.timeline_chevron_flow,
+            LayoutId.quadrant_2x2_matrix,
+            LayoutId.tri_column_showcase,
             LayoutId.pain_points_left_arrows,
             LayoutId.roadmap_layered_matrix,
             LayoutId.mechanism_3col_flow,
@@ -343,9 +358,26 @@ class ArtDirectorAgent:
                     {"badge": "要点解析", "badge_color": "s1" if idx == 0 else "s2", "title": ins.heading, "body": ins.body}
                     for idx, ins in enumerate(slide.insights[:2])
                 ]
-        elif slide.layout_id in (LayoutId.bg_top_summary_3box, LayoutId.fig_left_3step_chain):
+        elif slide.layout_id in (LayoutId.bg_top_summary_3box, LayoutId.fig_left_3step_chain, LayoutId.tri_column_showcase):
             if not slide.bottom_banner:
                 slide.bottom_banner = {"mode": "solid_bar", "badge": "突破", "text": slide.takeaway}
+        elif slide.layout_id == LayoutId.timeline_chevron_flow:
+            if not slide.chevron_steps:
+                slide.chevron_steps = [
+                    f"{i + 1:02d} {ins.heading[:10]}" for i, ins in enumerate(slide.insights[:4])
+                ] or ["01 问题提出", "02 分子设计", "03 机理验证", "04 定量突破"]
+            if not slide.bottom_banner:
+                slide.bottom_banner = {"mode": "solid_bar", "badge": "阶段", "text": slide.takeaway}
+        elif slide.layout_id == LayoutId.dual_compare_cards:
+            if not slide.left_cards:
+                slide.left_cards = [{"heading": ins.heading, "body": ins.body} for ins in slide.insights[:3]]
+            if not slide.right_chain:
+                slide.right_chain = [{"title": k.value, "body": k.label} for k in slide.kpis[:2]]
+            if not slide.bottom_banner:
+                slide.bottom_banner = {"mode": "bar", "badge": "优势对照", "text": slide.takeaway}
+        elif slide.layout_id == LayoutId.quadrant_2x2_matrix:
+            if not slide.left_cards:
+                slide.left_cards = [{"heading": ins.heading, "body": ins.body} for ins in slide.insights[:4]]
         elif slide.layout_id == LayoutId.vs_center_wing:
             if not slide.bottom_banner:
                 slide.bottom_banner = {"mode": "rose_quote", "text": slide.takeaway}
@@ -438,7 +470,7 @@ class ArtDirectorAgent:
             slide.layout_id = chosen_layout or self._choose_v5_layout(slide, is_proposal=is_proposal, content_index=content_index)
             if design_style == DesignStyle.consulting_editorial:
                 slide.header_variant = "editorial"
-            elif slide.layout_id in (LayoutId.pain_points_left_arrows, LayoutId.roadmap_layered_matrix):
+            elif slide.layout_id in (LayoutId.pain_points_left_arrows, LayoutId.roadmap_layered_matrix, LayoutId.dual_compare_cards):
                 slide.header_variant = "solid_bar"
             else:
                 slide.header_variant = "nav_tabs"

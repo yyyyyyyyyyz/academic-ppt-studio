@@ -267,14 +267,16 @@ class PlannerAgent:
         compound_list = extract_compounds_from_text(doc.raw_text)[:12]
         compound_summary = ", ".join(f"{lbl}={smi}" for lbl, smi in compound_list) if compound_list else "None detected"
 
+        from ..schemas.deck_spec import V5_LAYOUT_IDS
         from .outline_agent import load_word_outline_skill
 
         skill_guidance = load_word_outline_skill()
+        layout_enum_str = "|".join(f'"{lid.value}"' for lid in sorted(V5_LAYOUT_IDS, key=lambda x: x.value))
         sys_p = (
             f"{skill_guidance}\n\n"
             "Now map the manuscript into strict SlideSpec JSON with layout choice AND visual drawing instructions per slide:\n"
             '{"slides": [{"section_name": str, "eyebrow": str, '
-            '"layout_id": "bg_top_summary_3box"|"pain_points_left_arrows"|"lit_overview_dual_card"|"mechanism_3col_flow"|"data_dashboard_table"|"fig_left_3step_chain"|"vs_center_wing"|"roadmap_layered_matrix", '
+            f'"layout_id": {layout_enum_str}, '
             '"title": str (<=22 chars), "takeaway": str (<=40 chars, 1 sentence), '
             '"kpis": [{"value": str, "label": str}], '
             '"insights": [{"index": "01", "heading": str, "body": str (<=30 chars), "highlight": str (2-10 chars)}], '

@@ -1,7 +1,7 @@
 import React, { useRef, useState } from "react";
 import { fetchWordOutlineSkill, summarizeOutlineFromFile } from "../api/client";
 import type { WordOutlineResult } from "../api/client";
-import { COVER_TEMPLATE_OPTIONS } from "../types/deckSpec";
+import { COVER_TEMPLATE_OPTIONS, resolvePaletteAccent, resolvePaletteTint } from "../types/deckSpec";
 import type { CoverTemplateId, DesignStyle, PaletteInfo, ScenarioType } from "../types/deckSpec";
 
 interface ImportModalProps {
@@ -108,6 +108,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   const [scenario, setScenario] = useState<ScenarioType>("defense");
   const [slideCount, setSlideCount] = useState<number>(10);
   const [paletteId, setPaletteId] = useState<string>("lancet");
+  const [customHex, setCustomHex] = useState<string>("#1B5E7A");
   const [designStyle, setDesignStyle] = useState<DesignStyle>("defense_modular");
   const [coverTemplate, setCoverTemplate] = useState<CoverTemplateId>("hero_band_bottom_bar");
   const [isProposal, setIsProposal] = useState<boolean>(false);
@@ -126,9 +127,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 
   if (!open) return null;
 
-  const activePal = palettes.find((p) => p.id === paletteId);
-  const previewPrimary = activePal?.tokens?.s1 || "#00468B";
-  const previewTint = activePal?.tokens?.s4 || "#72A6D5";
+  const previewPrimary = resolvePaletteAccent(paletteId, palettes);
+  const previewTint = resolvePaletteTint(paletteId, palettes);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -319,22 +319,48 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 
             <label style={{ fontSize: 12 }}>
               <div style={{ fontWeight: 600, marginBottom: 4, color: "var(--ink-secondary)" }}>配色</div>
-              <select
-                key={`pal_${palettes.length}`}
-                className="editorial-select"
-                value={paletteId}
-                onChange={(e) => setPaletteId(e.target.value)}
-              >
-                {palettes.length === 0 ? (
-                  <option value="lancet">Lancet 深蓝</option>
-                ) : (
-                  palettes.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))
-                )}
-              </select>
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <select
+                  key={`pal_${palettes.length}`}
+                  className="editorial-select"
+                  value={paletteId}
+                  onChange={(e) => setPaletteId(e.target.value)}
+                  style={{ flex: 1, minWidth: 0 }}
+                >
+                  {palettes.length === 0 ? (
+                    <option value="lancet">Lancet · 深海蓝（默认）</option>
+                  ) : (
+                    palettes.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))
+                  )}
+                  <option value={`custom_${customHex.replace(/^#/, "").toUpperCase()}`}>
+                    自定义 · {customHex.toUpperCase()}
+                  </option>
+                </select>
+                <input
+                  type="color"
+                  value={customHex}
+                  title="自选主题色"
+                  onChange={(e) => {
+                    const hx = e.target.value.toUpperCase();
+                    setCustomHex(hx);
+                    setPaletteId(`custom_${hx.replace(/^#/, "")}`);
+                  }}
+                  style={{
+                    width: 28,
+                    height: 28,
+                    padding: 1,
+                    border: "1px solid #CBD5E1",
+                    borderRadius: 2,
+                    background: "#FFFFFF",
+                    cursor: "pointer",
+                    flexShrink: 0,
+                  }}
+                />
+              </div>
             </label>
 
             <label style={{ fontSize: 12 }}>

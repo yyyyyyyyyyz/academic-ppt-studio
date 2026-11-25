@@ -6,9 +6,10 @@ All HEX codes match Spec Section 4.2 verbatim, with unified global semantic toke
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 
 @dataclass(frozen=True)
@@ -101,7 +102,7 @@ def darken_hex(hex_color: str, factor: float) -> str:
 PALETTES: Dict[str, ScientificPalette] = {
     "lancet": ScientificPalette(
         id="lancet",
-        name="Lancet 深蓝阶（默认锁定）",
+        name="Lancet · 深海蓝（默认）",
         category="High-Impact Journal",
         description="柳叶刀权威深海蓝单色系梯度，适合医药合成、反应工程与答辩汇报主视觉",
         series=["#00468B", "#1A5F9E", "#3F80BC", "#72A6D5", "#B2D0EB", "#EAF2FA"],
@@ -119,7 +120,7 @@ PALETTES: Dict[str, ScientificPalette] = {
     ),
     "cell": ScientificPalette(
         id="cell",
-        name="Cell 清晰蓝阶",
+        name="Cell · 清透蓝",
         category="High-Impact Journal",
         description="Cell Press 清透科研发蓝渐变，适合化学生物学、分子识别与微流控界面",
         series=["#1F77B4", "#3D8CC2", "#62A4D1", "#8BBDE0", "#B7D7EE", "#E8F3FB"],
@@ -137,7 +138,7 @@ PALETTES: Dict[str, ScientificPalette] = {
     ),
     "nature": ScientificPalette(
         id="nature",
-        name="Nature 暖红橙阶",
+        name="Nature · 朱红橙",
         category="High-Impact Journal",
         description="Nature 朱红暖橙主阶配中性灰炭黑，适合光热/能量转换、靶向递送与机制突破",
         series=["#C83E2B", "#E64B35", "#F07B63", "#F5A38C", "#F7CBB9", "#B8B8B8", "#262626"],
@@ -155,7 +156,7 @@ PALETTES: Dict[str, ScientificPalette] = {
     ),
     "science": ScientificPalette(
         id="science",
-        name="Science 深紫阶",
+        name="Science · 典雅紫",
         category="High-Impact Journal",
         description="Science 典雅紫罗兰色阶，适合配位化学、超分子组装与计算化学/ML",
         series=["#332288", "#594A9E", "#8274B8", "#B1A6D4", "#DDD8EE", "#B8B8B8", "#262626"],
@@ -173,7 +174,7 @@ PALETTES: Dict[str, ScientificPalette] = {
     ),
     "nejm": ScientificPalette(
         id="nejm",
-        name="NEJM 医学红阶",
+        name="NEJM · 赤陶红",
         category="High-Impact Journal",
         description="新英格兰医学杂志醇厚赤陶红阶，适合临床前药理、药代动力学与生物医药转化",
         series=["#9E2F1E", "#BC3C29", "#CE5742", "#DD7864", "#EA9C8B", "#F4C2B6"],
@@ -191,7 +192,7 @@ PALETTES: Dict[str, ScientificPalette] = {
     ),
     "wong": ScientificPalette(
         id="wong",
-        name="Wong 色盲友好明橙阶",
+        name="Wong · 琥珀橙",
         category="High-Impact Journal",
         description="Nature Methods Wong 色盲安全琥珀明橙阶，适合压电/光催化与对比度要求高的现场答辩",
         series=["#B07300", "#E69F00", "#EBAD24", "#F0BC4A", "#F5CC73", "#F9DDA0"],
@@ -209,7 +210,7 @@ PALETTES: Dict[str, ScientificPalette] = {
     ),
     "viridis": ScientificPalette(
         id="viridis",
-        name="Viridis 感知均匀连续带",
+        name="Viridis · 紫青绿",
         category="High-Impact Journal",
         description="感知均匀紫-青-翠绿连续色谱，适合热图、DFT 电子密度与机器学习预测分布",
         series=["#440154", "#3B528B", "#21918C", "#5EC962", "#FDE725"],
@@ -227,7 +228,7 @@ PALETTES: Dict[str, ScientificPalette] = {
     ),
     "diverging": ScientificPalette(
         id="diverging",
-        name="Diverging 红白蓝发散带",
+        name="RdBu · 红白蓝",
         category="High-Impact Journal",
         description="ColorBrewer RdBu 双极发散带，适合正负对照、结合能升降与机理前后对比",
         series=["#67001F", "#B2182B", "#F4A582", "#F7F7F7", "#92C5DE", "#2166AC", "#053061"],
@@ -245,7 +246,7 @@ PALETTES: Dict[str, ScientificPalette] = {
     ),
     "medical_gray": ScientificPalette(
         id="medical_gray",
-        name="Medical 低干扰中性灰阶",
+        name="Editorial · 中性灰",
         category="High-Impact Journal",
         description="极简黑白灰高定出版风，适合电镜图衬托、理论公式与极端克制的数据对比",
         series=["#262626", "#4D4D4D", "#737373", "#999999", "#BDBDBD", "#D9D9D9"],
@@ -263,7 +264,7 @@ PALETTES: Dict[str, ScientificPalette] = {
     ),
     "immunology": ScientificPalette(
         id="immunology",
-        name="Immunology 绿白紫平衡带",
+        name="Immunology · 翠绿紫",
         category="High-Impact Journal",
         description="Nature Immunology 翠绿-薰衣草紫对冲平衡带，适合绿色化学减废与生物医学双通路",
         series=["#1B7837", "#4D9221", "#A1D76A", "#F7F7F7", "#AF8DC3", "#542788"],
@@ -281,7 +282,7 @@ PALETTES: Dict[str, ScientificPalette] = {
     ),
     "sci_morandi_catalysis": ScientificPalette(
         id="sci_morandi_catalysis",
-        name="SCI 实测 · 表界面催化莫兰迪（9 色）",
+        name="催化 · 莫兰迪青",
         category="SCI Measured",
         description="高引表面催化多组对照柔雅莫兰迪 9 色，耐看不刺眼且多系列区分度极高",
         series=["#81C9D3", "#B8D09E", "#EC7576", "#D3D3D3", "#BDA4D1", "#BCBC7F", "#89B687", "#E7CB8D", "#F0904D"],
@@ -299,7 +300,7 @@ PALETTES: Dict[str, ScientificPalette] = {
     ),
     "sci_angew_blue_orange": ScientificPalette(
         id="sci_angew_blue_orange",
-        name="SCI 实测 · Angew 蓝橙机理对比（5 色）",
+        name="Angew · 冰蓝珊瑚",
         category="SCI Measured",
         description="Angew. Chem. 经典冰蓝 vs 珊瑚橙双通路对照，适合正负反应机制与对照组实验组硬切分屏",
         series=["#3A80DA", "#ADDFFF", "#F1673D", "#FBD9DA", "#BBBCBC"],
@@ -317,7 +318,7 @@ PALETTES: Dict[str, ScientificPalette] = {
     ),
     "sci_high_entropy_echem": ScientificPalette(
         id="sci_high_entropy_echem",
-        name="SCI 实测 · 高熵电化学清爽（9 色）",
+        name="电化学 · 碧青粉",
         category="SCI Measured",
         description="高熵合金/电催化多联图专用清爽 9 色，LSV/Tafel/稳定性 6 联排零视觉疲劳",
         series=["#6AB4DC", "#42B8B1", "#E78489", "#9ED6E2", "#D8CA77", "#E1A8BC", "#D9BDBD", "#D96E7F", "#B1DDF4"],
@@ -335,7 +336,7 @@ PALETTES: Dict[str, ScientificPalette] = {
     ),
     "sci_nanoconfined_xps": ScientificPalette(
         id="sci_nanoconfined_xps",
-        name="SCI 实测 · 纳米限域 XPS 分峰（10 色）",
+        name="XPS · 钴蓝薄荷",
         category="SCI Measured",
         description="纳米限域催化剂与 XPS 多价态半透明分峰专用 10 色",
         series=["#F1AB78", "#80C7A7", "#CBCFE9", "#C884B6", "#3D73B9", "#F3A8A8", "#C7E3F6", "#E1C4A6", "#BCCEA8", "#5EB0A2"],
@@ -353,7 +354,7 @@ PALETTES: Dict[str, ScientificPalette] = {
     ),
     "sci_sunburst_pastel": ScientificPalette(
         id="sci_sunburst_pastel",
-        name="SCI 实测 · 同心圆综述柔色（9 色）",
+        name="综述 · 矢车菊柔色",
         category="SCI Measured",
         description="同心圆环综述（Sunburst）与 BioRender 通路专用高雅柔色 9 色",
         series=["#EDF4FC", "#FDEDED", "#88ADDF", "#85DD84", "#F0D29A", "#DEABCC", "#F5F7F1", "#FDF0DE", "#EFE2FA"],
@@ -373,11 +374,63 @@ PALETTES: Dict[str, ScientificPalette] = {
 
 
 DEFAULT_PALETTE_ID = "lancet"
+_HEX6_PAT = re.compile(r"^[0-9A-Fa-f]{6}$")
+
+
+def build_custom_palette(hex_primary: str, hex_alert: Optional[str] = None) -> ScientificPalette:
+    """Build a harmonious 6-step academic tonal palette from any user-chosen HEX color."""
+    clean = (hex_primary or "").strip().lstrip("#")
+    h1 = clean.upper() if _HEX6_PAT.match(clean) else "00468B"
+    raw_hex = f"#{h1}"
+    r, g, b = hex_to_rgb(raw_hex)
+    luma = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0
+    s1 = darken_hex(raw_hex, 0.25) if luma > 0.72 else raw_hex
+    s2 = blend_with_white(s1, 0.18)
+    s3 = blend_with_white(s1, 0.38)
+    s4 = blend_with_white(s1, 0.60)
+    s5 = blend_with_white(s1, 0.80)
+    s6 = blend_with_white(s1, 0.92)
+
+    clean_alert = (hex_alert or "").strip().lstrip("#")
+    if clean_alert and _HEX6_PAT.match(clean_alert):
+        h2 = clean_alert.upper()
+        alert = f"#{h2}"
+        pid = f"custom_{h1}_{h2}"
+    else:
+        alert = "#00468B" if (r > 160 and r > b + 40) else "#B91C1C"
+        pid = f"custom_{h1}"
+
+    return ScientificPalette(
+        id=pid,
+        name=f"自定义 · #{h1}",
+        category="Custom",
+        description=f"基于主色 #{h1} 自动生成的 6 阶单色学术渐变配色方案",
+        series=[s1, s2, s3, s4, s5, s6],
+        s1=s1,
+        s2=s2,
+        s3=s3,
+        s4=s4,
+        s5=s5,
+        s6=s6,
+        alert=alert,
+        material_prompt_terms=f"satin primary catalyst spheres ({s1} / {s2}), translucent frosted accents ({s4} / {s6})",
+    )
 
 
 def get_palette(palette_id: str | None = None) -> ScientificPalette:
-    pid = (palette_id or DEFAULT_PALETTE_ID).strip().lower()
-    return PALETTES.get(pid, PALETTES[DEFAULT_PALETTE_ID])
+    raw = (palette_id or DEFAULT_PALETTE_ID).strip()
+    pid = raw.lower()
+    if pid in PALETTES:
+        return PALETTES[pid]
+    if pid.startswith("custom_"):
+        parts = [p for p in raw[7:].split("_") if p]
+        if parts and _HEX6_PAT.match(parts[0]):
+            alert_part = parts[1] if len(parts) >= 2 and _HEX6_PAT.match(parts[1]) else None
+            return build_custom_palette(parts[0], alert_part)
+    stripped = raw.lstrip("#")
+    if _HEX6_PAT.match(stripped):
+        return build_custom_palette(stripped)
+    return PALETTES[DEFAULT_PALETTE_ID]
 
 
 def list_palettes() -> List[Dict[str, object]]:

@@ -1078,6 +1078,195 @@ def render_v5_slide_preview(
                 _draw_text_box(draw, 9.38, ny + 0.17, 0.38, 0.38, f"0{idx + 1}", size_pt=14.0, bold=True, color_hex=pal.s1 if is_last else "#FFFFFF", align="center", ea_font=ea_f, latin_font=lat_f)
                 _draw_text_box(draw, 9.84, ny, 2.76, 0.72, nd.get("title", ""), size_pt=14.0, bold=True, color_hex="#FFFFFF" if is_last else pal.ink, align="center", ea_font=ea_f, latin_font=lat_f)
 
+    elif spec.layout_id == LayoutId.timeline_chevron_flow:
+        steps = (spec.chevron_steps[:4] if spec.chevron_steps else [f"{ins.index} {ins.heading[:10]}" for ins in spec.insights[:4]]) or ["01 问题提出", "02 分子设计", "03 机理验证", "04 定量突破"]
+        while len(steps) < 4:
+            steps.append(f"0{len(steps) + 1} 阶段推进")
+        stage_colors = [pal.s1, pal.s2, pal.s3, pal.s1]
+        for idx, st in enumerate(steps[:4]):
+            sx = 0.40 + idx * 3.17
+            if show_l2:
+                _draw_chevron(draw, sx, 1.46, 3.02, 0.56, stage_colors[idx])
+            if show_l3:
+                _draw_text_box(draw, sx + 0.22, 1.48, 2.58, 0.52, st[:14], size_pt=14.0, bold=True, color_hex="#FFFFFF", align="center", ea_font=ea_f, latin_font=lat_f)
+        if show_l2:
+            _draw_elevated_box(canvas, 0.40, 2.24, 6.82, 3.88, fill_hex="#FFFFFF", border_hex=pal.s3, border_px=2, dashed=True, radius=0.05)
+            draw = ImageDraw.Draw(canvas)
+        _draw_chamfered_header_tab(canvas, draw, 1.91, 2.12, 3.80, 0.30, "核心结构与阶段流程", fill_hex=pal.s1, ea_font=ea_f, latin_font=lat_f, show_l2=show_l2, show_l3=show_l3)
+        _composite_figure_assets(canvas, draw, spec, pal, fig_box, show_l1, show_l2, show_l3, ea_font=ea_f, latin_font=lat_f)
+        right_items = spec.insights[:3] or [InsightItem(index="01", heading="阶段目标", body=spec.takeaway)]
+        for idx, ins in enumerate(right_items[:3]):
+            cy = 2.24 + idx * 1.34
+            badge_c = pal.s1 if idx != 1 else pal.s2
+            if show_l2:
+                _draw_elevated_box(canvas, 7.42, cy, 5.51, 1.20, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_px=1, radius=0.06)
+                draw = ImageDraw.Draw(canvas)
+                draw.rectangle([_px(7.48), _px(cy + 0.12), _px(7.54), _px(cy + 1.08)], fill=hex_to_rgb(badge_c))
+                draw.ellipse([_px(7.66), _px(cy + 0.12), _px(8.00), _px(cy + 0.46)], fill=hex_to_rgb(badge_c))
+            if show_l3:
+                _draw_text_box(draw, 7.66, cy + 0.12, 0.34, 0.34, ins.index, size_pt=14.0, bold=True, color_hex="#FFFFFF", align="center", ea_font=ea_f, latin_font=lat_f)
+                _draw_text_box(draw, 8.10, cy + 0.10, 4.68, 0.36, ins.heading, size_pt=14.5, bold=True, color_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+                _draw_text_box(draw, 7.66, cy + 0.50, 5.12, 0.62, ins.body, size_pt=14.0, color_hex=pal.ink, valign="top", line_spacing=1.08, ea_font=ea_f, latin_font=lat_f)
+
+    elif spec.layout_id == LayoutId.quadrant_2x2_matrix:
+        cards = spec.left_cards[:4] if len(spec.left_cards) >= 4 else [{"heading": ins.heading, "body": ins.body} for ins in spec.insights[:4]]
+        defaults = [
+            {"heading": "科学假说与立题", "body": spec.takeaway[:36] or "聚焦关键科学痛点与分子切入点。"},
+            {"heading": "先导结构优化", "body": "精准调控药效团取代基与理化性质平衡。"},
+            {"heading": "作用机制与互证", "body": "结合动力学与结构表征验证结合模式。"},
+            {"heading": "定量性能评估", "body": "系统评测活性、选择性与成药性窗口。"},
+        ]
+        while len(cards) < 4:
+            cards.append(defaults[len(cards)])
+        for idx, cd in enumerate(cards[:4]):
+            col, row = idx % 2, idx // 2
+            cx, cy = 0.40 + col * 3.96, 1.48 + row * 2.42
+            hdr_c = pal.s1 if (row + col) % 2 == 0 else pal.s2
+            if show_l2:
+                _draw_elevated_box(canvas, cx, cy, 3.78, 2.22, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_px=1, radius=0.06)
+                draw = ImageDraw.Draw(canvas)
+                _draw_rounded_box(draw, cx, cy, 3.78, 0.40, fill_hex=hdr_c, border_hex=None, radius=0.06)
+                _draw_rounded_box(draw, cx + 0.10, cy + 0.06, 0.42, 0.28, fill_hex="#FFFFFF", border_hex=None, radius=0.22)
+            if show_l3:
+                _draw_text_box(draw, cx + 0.10, cy + 0.06, 0.42, 0.28, f"0{idx + 1}", size_pt=14.0, bold=True, color_hex=hdr_c, align="center", ea_font=ea_f, latin_font=lat_f)
+                _draw_text_box(draw, cx + 0.60, cy + 0.02, 3.08, 0.36, cd.get("heading", ""), size_pt=14.5, bold=True, color_hex="#FFFFFF", ea_font=ea_f, latin_font=lat_f)
+                _draw_text_box(draw, cx + 0.14, cy + 0.48, 3.50, 1.64, cd.get("body", ""), size_pt=14.0, color_hex=pal.ink, valign="top", line_spacing=1.12, ea_font=ea_f, latin_font=lat_f)
+        if show_l2:
+            _draw_elevated_box(canvas, 8.34, 1.48, 4.59, 4.64, fill_hex="#FFFFFF", border_hex=pal.s3, border_px=2, dashed=True, radius=0.05)
+            draw = ImageDraw.Draw(canvas)
+        _draw_chamfered_header_tab(canvas, draw, 9.14, 1.35, 3.00, 0.30, "代表分子与定量指标", fill_hex=pal.s1, ea_font=ea_f, latin_font=lat_f, show_l2=show_l2, show_l3=show_l3)
+        _composite_figure_assets(canvas, draw, spec, pal, fig_box, show_l1, show_l2, show_l3, ea_font=ea_f, latin_font=lat_f)
+        kpis = spec.kpis[:2] or [
+            {"value": spec.insights[0].highlight or "关键聚焦", "label": spec.insights[0].heading[:10] if spec.insights else "核心指标", "color_token": "s1"},
+            {"value": spec.insights[-1].highlight or "定量验证", "label": spec.insights[-1].heading[:10] if spec.insights else "研究优势", "color_token": "s2"},
+        ]
+        for idx, kp in enumerate(kpis[:2]):
+            val = kp.value if hasattr(kp, "value") else kp["value"]
+            lbl = kp.label if hasattr(kp, "label") else kp["label"]
+            ctok = kp.color_token if hasattr(kp, "color_token") else kp.get("color_token", "s1")
+            kx = 8.48 + idx * 2.23
+            if show_l2:
+                _draw_rounded_box(draw, kx, 4.92, 2.08, 1.08, fill_hex=blend_with_white(pal.s6, 0.30), border_hex="#D6E0EC", border_px=1, radius=0.08)
+                draw.rectangle([_px(kx + 0.04), _px(4.94), _px(kx + 2.04), _px(4.99)], fill=hex_to_rgb(pal.token(ctok)))
+            if show_l3:
+                _draw_text_box(draw, kx + 0.08, 5.02, 1.92, 0.44, str(val)[:14], size_pt=17.0, bold=True, color_hex=pal.token(ctok), align="center", ea_font=ea_f, latin_font=lat_f)
+                _draw_text_box(draw, kx + 0.08, 5.48, 1.92, 0.44, str(lbl)[:14], size_pt=14.0, color_hex=pal.ink, align="center", ea_font=ea_f, latin_font=lat_f)
+
+    elif spec.layout_id == LayoutId.hub_spoke_radial:
+        if show_l2:
+            _draw_elevated_box(canvas, 0.40, 1.48, 4.88, 4.64, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_px=1, radius=0.06)
+            draw = ImageDraw.Draw(canvas)
+            draw.ellipse([_px(0.76), _px(1.72), _px(4.92), _px(5.88)], fill=hex_to_rgb(blend_with_white(pal.s6, 0.35)), outline=hex_to_rgb(pal.s4), width=2)
+            draw.ellipse([_px(1.06), _px(2.02), _px(4.62), _px(5.58)], fill=(255, 255, 255), outline=hex_to_rgb(pal.s2), width=3)
+            draw.ellipse([_px(1.35), _px(2.31), _px(4.33), _px(5.29)], fill=(255, 255, 255), outline=hex_to_rgb(pal.s1), width=2)
+        _draw_chamfered_header_tab(canvas, draw, 1.54, 1.35, 2.60, 0.30, "核心体系构筑", fill_hex=pal.s1, ea_font=ea_f, latin_font=lat_f, show_l2=show_l2, show_l3=show_l3)
+        _composite_figure_assets(canvas, draw, spec, pal, fig_box, show_l1, show_l2, show_l3, ea_font=ea_f, latin_font=lat_f)
+        spoke_items = spec.insights[:3] or [InsightItem(index="01", heading="体系协同", body=spec.takeaway)]
+        for idx, ins in enumerate(spoke_items[:3]):
+            cy = 1.54 + idx * 1.56
+            mid_y = cy + 0.69
+            hdr_c = pal.s1 if idx != 1 else pal.s2
+            if show_l2:
+                _draw_dashed_line(draw, _px(4.92), _px(mid_y), _px(5.52), _px(mid_y), hex_to_rgb(pal.s2), width=2)
+                draw.ellipse([_px(4.84), _px(mid_y - 0.08), _px(5.00), _px(mid_y + 0.08)], fill=hex_to_rgb(hdr_c), outline=(255, 255, 255), width=2)
+                _draw_elevated_box(canvas, 5.52, cy, 7.41, 1.38, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_px=1, radius=0.06)
+                draw = ImageDraw.Draw(canvas)
+                _draw_rounded_box(draw, 5.52, cy, 7.41, 0.38, fill_hex=hdr_c, border_hex=None, radius=0.06)
+                _draw_rounded_box(draw, 5.62, cy + 0.05, 0.42, 0.28, fill_hex="#FFFFFF", border_hex=None, radius=0.22)
+            if show_l3:
+                _draw_text_box(draw, 5.62, cy + 0.05, 0.42, 0.28, ins.index, size_pt=14.0, bold=True, color_hex=hdr_c, align="center", ea_font=ea_f, latin_font=lat_f)
+                _draw_text_box(draw, 6.14, cy + 0.02, 6.66, 0.34, ins.heading, size_pt=14.5, bold=True, color_hex="#FFFFFF", ea_font=ea_f, latin_font=lat_f)
+                _draw_text_box(draw, 5.66, cy + 0.44, 7.12, 0.86, ins.body, size_pt=14.0, color_hex=pal.ink, valign="top", line_spacing=1.10, ea_font=ea_f, latin_font=lat_f)
+
+    elif spec.layout_id == LayoutId.dual_compare_cards:
+        if show_l2:
+            _draw_elevated_box(canvas, 0.40, 1.46, 12.53, 0.56, fill_hex=blend_with_white(pal.s6, 0.35), border_hex="#D6E0EC", border_px=1, radius=0.08)
+            draw = ImageDraw.Draw(canvas)
+            draw.rectangle([_px(0.48), _px(1.54), _px(0.56), _px(1.94)], fill=hex_to_rgb(pal.s1))
+        if show_l3:
+            _draw_text_box(draw, 0.66, 1.48, 12.14, 0.52, spec.takeaway or spec.title, size_pt=14.0, bold=True, color_hex=pal.ink, ea_font=ea_f, latin_font=lat_f)
+
+        if show_l2:
+            _draw_elevated_box(canvas, 0.40, 2.18, 5.82, 3.94, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_px=1, radius=0.06)
+            draw = ImageDraw.Draw(canvas)
+            _draw_rounded_box(draw, 0.40, 2.18, 5.82, 0.42, fill_hex=pal.s2, border_hex=None, radius=0.06)
+        if show_l3:
+            _draw_text_box(draw, 0.52, 2.20, 5.58, 0.38, "现有方案与研究瓶颈", size_pt=14.5, bold=True, color_hex="#FFFFFF", align="center", ea_font=ea_f, latin_font=lat_f)
+
+        l_cards = spec.left_cards or [{"heading": i.heading, "body": i.body} for i in spec.insights[:3]]
+        for idx, lc in enumerate(l_cards[:3]):
+            sy = 2.72 + idx * 1.10
+            if show_l2:
+                _draw_rounded_box(draw, 0.56, sy, 5.50, 0.98, fill_hex=blend_with_white(pal.s6, 0.50), border_hex="#E2E8F0", border_px=1, radius=0.06)
+                draw.ellipse([_px(0.68), _px(sy + 0.12), _px(0.98), _px(sy + 0.42)], fill=hex_to_rgb(pal.s2))
+            if show_l3:
+                _draw_text_box(draw, 0.68, sy + 0.12, 0.30, 0.30, f"0{idx + 1}", size_pt=14.0, bold=True, color_hex="#FFFFFF", align="center", ea_font=ea_f, latin_font=lat_f)
+                _draw_text_box(draw, 1.06, sy + 0.10, 4.86, 0.34, lc.get("heading", ""), size_pt=14.5, bold=True, color_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+                _draw_text_box(draw, 0.68, sy + 0.46, 5.24, 0.46, lc.get("body", ""), size_pt=14.0, color_hex=pal.ink, valign="top", line_spacing=1.05, ea_font=ea_f, latin_font=lat_f)
+
+        if show_l2:
+            draw.line([_px(6.22), _px(4.16), _px(6.35), _px(4.16)], fill=hex_to_rgb(pal.s3), width=3)
+            draw.line([_px(6.98), _px(4.16), _px(7.11), _px(4.16)], fill=hex_to_rgb(pal.s1), width=3)
+            draw.ellipse([_px(6.345), _px(3.84), _px(6.985), _px(4.48)], fill=hex_to_rgb(pal.s1), outline=(255, 255, 255), width=3)
+            _draw_elevated_box(canvas, 7.11, 2.18, 5.82, 3.94, fill_hex="#FFFFFF", border_hex=pal.s3, border_px=2, radius=0.06)
+            draw = ImageDraw.Draw(canvas)
+            _draw_rounded_box(draw, 7.11, 2.18, 5.82, 0.42, fill_hex=pal.s1, border_hex=None, radius=0.06)
+            _draw_rounded_box(draw, 7.27, 2.74, 5.50, 2.28, fill_hex="#FFFFFF", border_hex="#E2E8F0", border_px=1, radius=0.05)
+        if show_l3:
+            _draw_text_box(draw, 6.345, 3.84, 0.64, 0.64, "VS", size_pt=16.0, bold=True, color_hex="#FFFFFF", align="center", ea_font=ea_f, latin_font=lat_f)
+            _draw_text_box(draw, 7.23, 2.20, 5.58, 0.38, "本研究突破与分子验证", size_pt=14.5, bold=True, color_hex="#FFFFFF", align="center", ea_font=ea_f, latin_font=lat_f)
+        _composite_figure_assets(canvas, draw, spec, pal, fig_box, show_l1, show_l2, show_l3, ea_font=ea_f, latin_font=lat_f)
+        r_cards = spec.right_chain or [{"title": k.value, "body": k.label} for k in spec.kpis[:2]] or [{"title": spec.insights[-1].highlight or "关键突破", "body": spec.insights[-1].heading if spec.insights else "选择性提升"}]
+        for idx, rc in enumerate(r_cards[:2]):
+            rx = 7.27 + idx * 2.84
+            if show_l2:
+                _draw_rounded_box(draw, rx, 5.12, 2.66, 0.88, fill_hex=blend_with_white(pal.s6, 0.30), border_hex="#D6E0EC", border_px=1, radius=0.06)
+                draw.rectangle([_px(rx + 0.06), _px(5.20), _px(rx + 0.12), _px(5.92)], fill=hex_to_rgb(pal.s1 if idx == 0 else pal.s2))
+            if show_l3:
+                _draw_text_box(draw, rx + 0.18, 5.16, 2.38, 0.38, str(rc.get("title", ""))[:14], size_pt=15.5, bold=True, color_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+                _draw_text_box(draw, rx + 0.18, 5.54, 2.38, 0.38, str(rc.get("body", ""))[:18], size_pt=14.0, color_hex=pal.ink, ea_font=ea_f, latin_font=lat_f)
+
+    elif spec.layout_id == LayoutId.tri_column_showcase:
+        top_cards = spec.insights[:3] or [InsightItem(index="01", heading="核心创新", body=spec.takeaway)]
+        defaults = [
+            InsightItem(index="01", heading="理性设计与构筑", body="面向关键靶点口袋精确构建先导骨架。"),
+            InsightItem(index="02", heading="表征与机制阐明", body="多维光谱与构象分析互证作用机制。"),
+            InsightItem(index="03", heading="定量性能突破", body="显著提升活性、选择性与成药性窗口。"),
+        ]
+        while len(top_cards) < 3:
+            top_cards.append(defaults[len(top_cards)])
+        for idx, ins in enumerate(top_cards[:3]):
+            cx = 0.40 + idx * 4.285
+            accent = pal.s1 if idx != 1 else pal.s2
+            if show_l2:
+                _draw_elevated_box(canvas, cx, 1.48, 3.96, 1.62, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_px=1, radius=0.06)
+                draw = ImageDraw.Draw(canvas)
+                draw.rectangle([_px(cx + 0.02), _px(1.50), _px(cx + 3.94), _px(1.57)], fill=hex_to_rgb(accent))
+                draw.ellipse([_px(cx + 0.14), _px(1.64), _px(cx + 0.46), _px(1.96)], fill=hex_to_rgb(accent))
+                if idx < 2:
+                    _draw_chevron(draw, cx + 4.02, 2.15, 0.21, 0.28, pal.s2)
+            if show_l3:
+                _draw_text_box(draw, cx + 0.14, 1.64, 0.32, 0.32, ins.index, size_pt=14.0, bold=True, color_hex="#FFFFFF", align="center", ea_font=ea_f, latin_font=lat_f)
+                _draw_text_box(draw, cx + 0.54, 1.62, 3.28, 0.36, ins.heading, size_pt=14.5, bold=True, color_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+                _draw_text_box(draw, cx + 0.14, 2.04, 3.68, 0.98, ins.body, size_pt=14.0, color_hex=pal.ink, valign="top", line_spacing=1.10, ea_font=ea_f, latin_font=lat_f)
+        if show_l2:
+            _draw_elevated_box(canvas, 0.40, 3.34, 8.22, 2.78, fill_hex="#FFFFFF", border_hex=pal.s3, border_px=2, dashed=True, radius=0.05)
+            _draw_elevated_box(canvas, 8.82, 3.34, 4.11, 2.78, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_px=1, radius=0.06)
+            draw = ImageDraw.Draw(canvas)
+        _draw_chamfered_header_tab(canvas, draw, 2.71, 3.21, 3.60, 0.30, "分子结构与机制示意", fill_hex=pal.s1, ea_font=ea_f, latin_font=lat_f, show_l2=show_l2, show_l3=show_l3)
+        _composite_figure_assets(canvas, draw, spec, pal, fig_box, show_l1, show_l2, show_l3, ea_font=ea_f, latin_font=lat_f)
+        _draw_chamfered_header_tab(canvas, draw, 9.58, 3.21, 2.60, 0.30, "核心结论与指标", fill_hex=pal.s1, ea_font=ea_f, latin_font=lat_f, show_l2=show_l2, show_l3=show_l3)
+        right_rows = [{"title": k.value, "body": k.label} for k in spec.kpis[:2]] if spec.kpis else [{"title": ins.highlight or ins.heading[:10], "body": ins.heading[:14]} for ins in spec.insights[:2]]
+        for idx, rr in enumerate(right_rows[:2]):
+            ky = 3.64 + idx * 1.24
+            col = pal.s1 if idx == 0 else pal.s2
+            if show_l2:
+                _draw_rounded_box(draw, 8.98, ky, 3.79, 1.10, fill_hex=blend_with_white(pal.s6, 0.38), border_hex="#D6E0EC", border_px=1, radius=0.06)
+                draw.rectangle([_px(9.04), _px(ky + 0.12), _px(9.10), _px(ky + 0.98)], fill=hex_to_rgb(col))
+            if show_l3:
+                _draw_text_box(draw, 9.18, ky + 0.10, 3.48, 0.42, str(rr.get("title", ""))[:16], size_pt=16.5, bold=True, color_hex=col, ea_font=ea_f, latin_font=lat_f)
+                _draw_text_box(draw, 9.18, ky + 0.54, 3.48, 0.48, str(rr.get("body", ""))[:20], size_pt=14.0, color_hex=pal.ink, ea_font=ea_f, latin_font=lat_f)
+
     # 3. Elevated Pure-White Bottom Banner + Footer
     banner = spec.bottom_banner or {}
     mode = banner.get("mode", "bar")

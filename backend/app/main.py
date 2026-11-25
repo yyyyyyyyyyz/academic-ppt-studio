@@ -21,6 +21,7 @@ from __future__ import annotations
 from dataclasses import replace
 import hmac
 import os
+import re
 import shutil
 import time
 import uuid
@@ -743,13 +744,14 @@ def api_palettes_apply(req: PaletteApplyRequest) -> Dict[str, object]:
     deck.meta.palette_id = req.palette_id
     d_dir = _deck_dir(deck.meta.deck_id)
     factory = ScientificFigureFactory(settings=settings)
-    bust = f"{req.palette_id}_{uuid.uuid4().hex[:6]}"
+    safe_pid = re.sub(r"[^A-Za-z0-9_-]", "_", req.palette_id)
+    bust = f"{safe_pid}_{uuid.uuid4().hex[:6]}"
 
     for sl in deck.slides:
         if req.rerender_figures and sl.figure_spec:
             factory.render_figure_spec(
                 sl.figure_spec,
-                output_dir=d_dir / "figures" / f"slide_{sl.slide_no:02d}_{req.palette_id}",
+                output_dir=d_dir / "figures" / f"slide_{sl.slide_no:02d}_{safe_pid}",
                 palette_id=req.palette_id,
                 is_proposal=deck.meta.is_proposal,
             )

@@ -75,6 +75,11 @@ def get_v5_figure_box(layout_id: LayoutId) -> FigureBoxIn:
         LayoutId.fig_left_3step_chain: FigureBoxIn(left=0.56, top=2.00, width=7.44, height=3.92),
         LayoutId.vs_center_wing: FigureBoxIn(left=3.90, top=1.94, width=5.52, height=3.60),
         LayoutId.roadmap_layered_matrix: FigureBoxIn(left=1.42, top=3.00, width=3.66, height=1.70),
+        LayoutId.timeline_chevron_flow: FigureBoxIn(left=0.54, top=2.56, width=6.54, height=3.42),
+        LayoutId.quadrant_2x2_matrix: FigureBoxIn(left=8.48, top=1.86, width=4.31, height=2.92),
+        LayoutId.hub_spoke_radial: FigureBoxIn(left=1.50, top=2.48, width=2.68, height=2.64),
+        LayoutId.dual_compare_cards: FigureBoxIn(left=7.27, top=2.82, width=5.50, height=2.16),
+        LayoutId.tri_column_showcase: FigureBoxIn(left=0.56, top=3.62, width=7.90, height=2.36),
     }
     return mapping.get(layout_id, FigureBoxIn(left=0.46, top=1.68, width=7.75, height=4.42))
 
@@ -1007,6 +1012,247 @@ def _build_roadmap_layered_matrix(slide, spec: SlideSpec, deck: DeckSpec, pal: S
             da_r.line.fill.background()
 
 
+def _build_timeline_chevron_flow(slide, spec: SlideSpec, deck: DeckSpec, pal: ScientificPalette, figure_renderer: Callable) -> None:
+    ea_f, lat_f = _fonts(deck)
+    steps = (spec.chevron_steps[:4] if spec.chevron_steps else [
+        f"{ins.index} {ins.heading[:10]}" for ins in spec.insights[:4]
+    ]) or ["01 问题提出", "02 分子设计", "03 机理验证", "04 定量突破"]
+    while len(steps) < 4:
+        steps.append(f"0{len(steps) + 1} 阶段推进")
+
+    stage_colors = [pal.s1, pal.s2, pal.s3, pal.s1]
+    for idx, st in enumerate(steps[:4]):
+        sx = 0.40 + idx * 3.17
+        ch = slide.shapes.add_shape(MSO_SHAPE.CHEVRON, Inches(sx), Inches(1.46), Inches(3.02), Inches(0.56))
+        ch.fill.solid()
+        ch.fill.fore_color.rgb = _rgb(stage_colors[idx])
+        ch.line.fill.background()
+        ch.name = f"L2_timeline_stage_{idx}"
+        add_box_text(
+            slide, sx + 0.22, 1.48, 2.58, 0.52, st[:14],
+            size_pt=14.0, bold=True, color_hex="#FFFFFF", align=PP_ALIGN.CENTER,
+            ea_font=ea_f, latin_font=lat_f, name=f"L3_timeline_stage_{idx}",
+        )
+
+    add_rounded_box(slide, 0.40, 2.24, 6.82, 3.88, fill_hex="#FFFFFF", border_hex=pal.s3, border_pt=1.0, dashed=True, radius=0.05, shadow=True)
+    add_chamfered_header_tab(slide, 1.91, 2.12, 3.80, 0.30, "核心结构与阶段流程", fill_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+    if spec.figure_spec:
+        figure_renderer(slide, spec.figure_spec, pal, override_box=get_v5_figure_box(LayoutId.timeline_chevron_flow), ea_font=ea_f, latin_font=lat_f)
+
+    right_items = spec.insights[:3] or [InsightItem(index="01", heading="阶段目标", body=spec.takeaway)]
+    for idx, ins in enumerate(right_items[:3]):
+        cy = 2.24 + idx * 1.34
+        add_rounded_box(slide, 7.42, cy, 5.51, 1.20, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True)
+        add_rect(slide, 7.48, cy + 0.12, 0.06, 0.96, fill_hex=pal.s1 if idx != 1 else pal.s2)
+        badge_c = pal.s1 if idx != 1 else pal.s2
+        nc = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(7.66), Inches(cy + 0.12), Inches(0.34), Inches(0.34))
+        nc.fill.solid()
+        nc.fill.fore_color.rgb = _rgb(badge_c)
+        nc.line.fill.background()
+        add_box_text(slide, 7.66, cy + 0.12, 0.34, 0.34, ins.index, size_pt=14.0, bold=True, color_hex="#FFFFFF", align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, 8.10, cy + 0.10, 4.68, 0.36, ins.heading, size_pt=14.5, bold=True, color_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, 7.66, cy + 0.50, 5.12, 0.62, ins.body, size_pt=14.0, color_hex=pal.ink, line_spacing=1.08, anchor=MSO_ANCHOR.TOP, ea_font=ea_f, latin_font=lat_f)
+
+
+def _build_quadrant_2x2_matrix(slide, spec: SlideSpec, deck: DeckSpec, pal: ScientificPalette, figure_renderer: Callable) -> None:
+    ea_f, lat_f = _fonts(deck)
+    cards = (spec.left_cards[:4] if len(spec.left_cards) >= 4 else [
+        {"heading": ins.heading, "body": ins.body} for ins in spec.insights[:4]
+    ])
+    defaults = [
+        {"heading": "科学假说与立题", "body": spec.takeaway[:36] or "聚焦关键科学痛点与分子切入点。"},
+        {"heading": "先导结构优化", "body": "精准调控药效团取代基与理化性质平衡。"},
+        {"heading": "作用机制与互证", "body": "结合动力学与结构表征验证结合模式。"},
+        {"heading": "定量性能评估", "body": "系统评测活性、选择性与成药性窗口。"},
+    ]
+    while len(cards) < 4:
+        cards.append(defaults[len(cards)])
+
+    for idx, cd in enumerate(cards[:4]):
+        col = idx % 2
+        row = idx // 2
+        cx = 0.40 + col * 3.96
+        cy = 1.48 + row * 2.42
+        hdr_c = pal.s1 if (row + col) % 2 == 0 else pal.s2
+        add_rounded_box(slide, cx, cy, 3.78, 2.22, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True)
+        add_rounded_box(slide, cx, cy, 3.78, 0.40, fill_hex=hdr_c, border_hex=None, radius=0.06)
+        add_rounded_box(slide, cx + 0.10, cy + 0.06, 0.42, 0.28, fill_hex="#FFFFFF", border_hex=None, radius=0.22)
+        add_box_text(slide, cx + 0.10, cy + 0.06, 0.42, 0.28, f"0{idx + 1}", size_pt=14.0, bold=True, color_hex=hdr_c, align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, cx + 0.60, cy + 0.02, 3.08, 0.36, cd.get("heading", ""), size_pt=14.5, bold=True, color_hex="#FFFFFF", ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, cx + 0.14, cy + 0.48, 3.50, 1.64, cd.get("body", ""), size_pt=14.0, color_hex=pal.ink, line_spacing=1.12, anchor=MSO_ANCHOR.TOP, ea_font=ea_f, latin_font=lat_f)
+
+    add_rounded_box(slide, 8.34, 1.48, 4.59, 4.64, fill_hex="#FFFFFF", border_hex=pal.s3, border_pt=1.0, dashed=True, radius=0.05, shadow=True)
+    add_chamfered_header_tab(slide, 9.14, 1.35, 3.00, 0.30, "代表分子与定量指标", fill_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+    if spec.figure_spec:
+        figure_renderer(slide, spec.figure_spec, pal, override_box=get_v5_figure_box(LayoutId.quadrant_2x2_matrix), ea_font=ea_f, latin_font=lat_f)
+
+    kpis = spec.kpis[:2] or [
+        {"value": spec.insights[0].highlight or "关键聚焦", "label": spec.insights[0].heading[:10] if spec.insights else "核心指标", "color_token": "s1"},
+        {"value": spec.insights[-1].highlight or "定量验证", "label": spec.insights[-1].heading[:10] if spec.insights else "研究优势", "color_token": "s2"},
+    ]
+    for idx, kp in enumerate(kpis[:2]):
+        val = kp.value if hasattr(kp, "value") else kp["value"]
+        lbl = kp.label if hasattr(kp, "label") else kp["label"]
+        ctok = kp.color_token if hasattr(kp, "color_token") else kp.get("color_token", "s1")
+        kx = 8.48 + idx * 2.23
+        add_rounded_box(slide, kx, 4.92, 2.08, 1.08, fill_hex=blend_with_white(pal.s6, 0.30), border_hex="#D6E0EC", border_pt=0.75, radius=0.08)
+        add_rect(slide, kx + 0.04, 4.94, 2.00, 0.05, fill_hex=pal.token(ctok))
+        add_box_text(slide, kx + 0.08, 5.02, 1.92, 0.44, str(val)[:14], size_pt=17.0, bold=True, color_hex=pal.token(ctok), align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, kx + 0.08, 5.48, 1.92, 0.44, str(lbl)[:14], size_pt=14.0, color_hex=pal.ink, align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+
+
+def _build_hub_spoke_radial(slide, spec: SlideSpec, deck: DeckSpec, pal: ScientificPalette, figure_renderer: Callable) -> None:
+    ea_f, lat_f = _fonts(deck)
+    add_rounded_box(slide, 0.40, 1.48, 4.88, 4.64, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True)
+    add_chamfered_header_tab(slide, 1.54, 1.35, 2.60, 0.30, "核心体系构筑", fill_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+
+    outer = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(0.76), Inches(1.72), Inches(4.16), Inches(4.16))
+    outer.fill.solid()
+    outer.fill.fore_color.rgb = _rgb(blend_with_white(pal.s6, 0.35))
+    outer.line.color.rgb = _rgb(pal.s4)
+    outer.line.width = Pt(1.0)
+
+    mid = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(1.06), Inches(2.02), Inches(3.56), Inches(3.56))
+    mid.fill.solid()
+    mid.fill.fore_color.rgb = _rgb("#FFFFFF")
+    mid.line.color.rgb = _rgb(pal.s2)
+    mid.line.width = Pt(1.5)
+
+    inner = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(1.35), Inches(2.31), Inches(2.98), Inches(2.98))
+    inner.fill.solid()
+    inner.fill.fore_color.rgb = _rgb("#FFFFFF")
+    inner.line.color.rgb = _rgb(pal.s1)
+    inner.line.width = Pt(1.0)
+    etree.SubElement(inner.line._get_or_add_ln(), qn("a:prstDash")).set("val", "dash")
+
+    if spec.figure_spec:
+        figure_renderer(slide, spec.figure_spec, pal, override_box=get_v5_figure_box(LayoutId.hub_spoke_radial), ea_font=ea_f, latin_font=lat_f)
+
+    spoke_items = spec.insights[:3] or [InsightItem(index="01", heading="体系协同", body=spec.takeaway)]
+    for idx, ins in enumerate(spoke_items[:3]):
+        cy = 1.54 + idx * 1.56
+        mid_y = cy + 0.69
+        add_line(slide, 4.92, mid_y, 5.52, mid_y, color_hex=pal.s2, width_pt=1.4, dashed=True, arrow_end=True)
+        dot = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(4.84), Inches(mid_y - 0.08), Inches(0.16), Inches(0.16))
+        dot.fill.solid()
+        dot.fill.fore_color.rgb = _rgb(pal.s1 if idx != 1 else pal.s2)
+        dot.line.color.rgb = _rgb("#FFFFFF")
+        dot.line.width = Pt(1.2)
+
+        hdr_c = pal.s1 if idx != 1 else pal.s2
+        add_rounded_box(slide, 5.52, cy, 7.41, 1.38, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True)
+        add_rounded_box(slide, 5.52, cy, 7.41, 0.38, fill_hex=hdr_c, border_hex=None, radius=0.06)
+        add_rounded_box(slide, 5.62, cy + 0.05, 0.42, 0.28, fill_hex="#FFFFFF", border_hex=None, radius=0.22)
+        add_box_text(slide, 5.62, cy + 0.05, 0.42, 0.28, ins.index, size_pt=14.0, bold=True, color_hex=hdr_c, align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, 6.14, cy + 0.02, 6.66, 0.34, ins.heading, size_pt=14.5, bold=True, color_hex="#FFFFFF", ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, 5.66, cy + 0.44, 7.12, 0.86, ins.body, size_pt=14.0, color_hex=pal.ink, line_spacing=1.10, anchor=MSO_ANCHOR.TOP, ea_font=ea_f, latin_font=lat_f)
+
+
+def _build_dual_compare_cards(slide, spec: SlideSpec, deck: DeckSpec, pal: ScientificPalette, figure_renderer: Callable) -> None:
+    ea_f, lat_f = _fonts(deck)
+    add_rounded_box(slide, 0.40, 1.46, 12.53, 0.56, fill_hex=blend_with_white(pal.s6, 0.35), border_hex="#D6E0EC", border_pt=0.75, radius=0.08, shadow=True)
+    add_rect(slide, 0.48, 1.54, 0.08, 0.40, fill_hex=pal.s1)
+    add_box_text(slide, 0.66, 1.48, 12.14, 0.52, spec.takeaway or spec.title, size_pt=14.0, bold=True, color_hex=pal.ink, ea_font=ea_f, latin_font=lat_f)
+
+    # Left Column: Conventional / Bottlenecks
+    add_rounded_box(slide, 0.40, 2.18, 5.82, 3.94, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True)
+    add_rounded_box(slide, 0.40, 2.18, 5.82, 0.42, fill_hex=pal.s2, border_hex=None, radius=0.06)
+    add_box_text(slide, 0.52, 2.20, 5.58, 0.38, "现有方案与研究瓶颈", size_pt=14.5, bold=True, color_hex="#FFFFFF", align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+
+    l_cards = spec.left_cards or [{"heading": i.heading, "body": i.body} for i in spec.insights[:3]]
+    for idx, lc in enumerate(l_cards[:3]):
+        sy = 2.72 + idx * 1.10
+        add_rounded_box(slide, 0.56, sy, 5.50, 0.98, fill_hex=blend_with_white(pal.s6, 0.50), border_hex="#E2E8F0", border_pt=0.75, radius=0.06)
+        nc = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(0.68), Inches(sy + 0.12), Inches(0.30), Inches(0.30))
+        nc.fill.solid()
+        nc.fill.fore_color.rgb = _rgb(pal.s2)
+        nc.line.fill.background()
+        add_box_text(slide, 0.68, sy + 0.12, 0.30, 0.30, f"0{idx + 1}", size_pt=14.0, bold=True, color_hex="#FFFFFF", align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, 1.06, sy + 0.10, 4.86, 0.34, lc.get("heading", ""), size_pt=14.5, bold=True, color_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, 0.68, sy + 0.46, 5.24, 0.46, lc.get("body", ""), size_pt=14.0, color_hex=pal.ink, line_spacing=1.05, anchor=MSO_ANCHOR.TOP, ea_font=ea_f, latin_font=lat_f)
+
+    # Center VS Badge + Connectors
+    add_line(slide, 6.22, 4.16, 6.35, 4.16, color_hex=pal.s3, width_pt=2.0)
+    add_line(slide, 6.98, 4.16, 7.11, 4.16, color_hex=pal.s1, width_pt=2.0)
+    vs_circle = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(6.345), Inches(3.84), Inches(0.64), Inches(0.64))
+    vs_circle.fill.solid()
+    vs_circle.fill.fore_color.rgb = _rgb(pal.s1)
+    vs_circle.line.color.rgb = _rgb("#FFFFFF")
+    vs_circle.line.width = Pt(2.0)
+    apply_soft_card_shadow(vs_circle)
+    add_box_text(slide, 6.345, 3.84, 0.64, 0.64, "VS", size_pt=16.0, bold=True, color_hex="#FFFFFF", align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+
+    # Right Column: Our Innovation + Figure + Quantitative Strips
+    add_rounded_box(slide, 7.11, 2.18, 5.82, 3.94, fill_hex="#FFFFFF", border_hex=pal.s3, border_pt=0.95, radius=0.06, shadow=True)
+    add_rounded_box(slide, 7.11, 2.18, 5.82, 0.42, fill_hex=pal.s1, border_hex=None, radius=0.06)
+    add_box_text(slide, 7.23, 2.20, 5.58, 0.38, "本研究突破与分子验证", size_pt=14.5, bold=True, color_hex="#FFFFFF", align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+    add_rounded_box(slide, 7.27, 2.74, 5.50, 2.28, fill_hex="#FFFFFF", border_hex="#E2E8F0", border_pt=0.75, radius=0.05)
+
+    if spec.figure_spec:
+        figure_renderer(slide, spec.figure_spec, pal, override_box=get_v5_figure_box(LayoutId.dual_compare_cards), ea_font=ea_f, latin_font=lat_f)
+
+    r_cards = spec.right_chain or [{"title": k.value, "body": k.label} for k in spec.kpis[:2]] or [
+        {"title": spec.insights[-1].highlight or "关键突破", "body": spec.insights[-1].heading if spec.insights else "选择性提升"}
+    ]
+    for idx, rc in enumerate(r_cards[:2]):
+        rx = 7.27 + idx * 2.84
+        add_rounded_box(slide, rx, 5.12, 2.66, 0.88, fill_hex=blend_with_white(pal.s6, 0.30), border_hex="#D6E0EC", border_pt=0.75, radius=0.06)
+        add_rect(slide, rx + 0.06, 5.20, 0.06, 0.72, fill_hex=pal.s1 if idx == 0 else pal.s2)
+        add_box_text(slide, rx + 0.18, 5.16, 2.38, 0.38, str(rc.get("title", ""))[:14], size_pt=15.5, bold=True, color_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, rx + 0.18, 5.54, 2.38, 0.38, str(rc.get("body", ""))[:18], size_pt=14.0, color_hex=pal.ink, ea_font=ea_f, latin_font=lat_f)
+
+
+def _build_tri_column_showcase(slide, spec: SlideSpec, deck: DeckSpec, pal: ScientificPalette, figure_renderer: Callable) -> None:
+    ea_f, lat_f = _fonts(deck)
+    top_cards = spec.insights[:3] or [InsightItem(index="01", heading="核心创新", body=spec.takeaway)]
+    defaults = [
+        InsightItem(index="01", heading="理性设计与构筑", body="面向关键靶点口袋精确构建先导骨架。"),
+        InsightItem(index="02", heading="表征与机制阐明", body="多维光谱与构象分析互证作用机制。"),
+        InsightItem(index="03", heading="定量性能突破", body="显著提升活性、选择性与成药性窗口。"),
+    ]
+    while len(top_cards) < 3:
+        top_cards.append(defaults[len(top_cards)])
+
+    for idx, ins in enumerate(top_cards[:3]):
+        cx = 0.40 + idx * 4.285
+        accent = pal.s1 if idx != 1 else pal.s2
+        add_rounded_box(slide, cx, 1.48, 3.96, 1.62, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True)
+        add_rect(slide, cx + 0.02, 1.50, 3.92, 0.07, fill_hex=accent)
+        nc = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(cx + 0.14), Inches(1.64), Inches(0.32), Inches(0.32))
+        nc.fill.solid()
+        nc.fill.fore_color.rgb = _rgb(accent)
+        nc.line.fill.background()
+        add_box_text(slide, cx + 0.14, 1.64, 0.32, 0.32, ins.index, size_pt=14.0, bold=True, color_hex="#FFFFFF", align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, cx + 0.54, 1.62, 3.28, 0.36, ins.heading, size_pt=14.5, bold=True, color_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, cx + 0.14, 2.04, 3.68, 0.98, ins.body, size_pt=14.0, color_hex=pal.ink, line_spacing=1.10, anchor=MSO_ANCHOR.TOP, ea_font=ea_f, latin_font=lat_f)
+        if idx < 2:
+            ch = slide.shapes.add_shape(MSO_SHAPE.CHEVRON, Inches(cx + 4.02), Inches(2.15), Inches(0.21), Inches(0.28))
+            ch.fill.solid()
+            ch.fill.fore_color.rgb = _rgb(pal.s2)
+            ch.line.fill.background()
+
+    add_rounded_box(slide, 0.40, 3.34, 8.22, 2.78, fill_hex="#FFFFFF", border_hex=pal.s3, border_pt=1.0, dashed=True, radius=0.05, shadow=True)
+    add_chamfered_header_tab(slide, 2.71, 3.21, 3.60, 0.30, "分子结构与机制示意", fill_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+    if spec.figure_spec:
+        figure_renderer(slide, spec.figure_spec, pal, override_box=get_v5_figure_box(LayoutId.tri_column_showcase), ea_font=ea_f, latin_font=lat_f)
+
+    add_rounded_box(slide, 8.82, 3.34, 4.11, 2.78, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True)
+    add_chamfered_header_tab(slide, 9.58, 3.21, 2.60, 0.30, "核心结论与指标", fill_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+
+    right_rows = (
+        [{"title": k.value, "body": k.label} for k in spec.kpis[:2]]
+        if spec.kpis
+        else [{"title": ins.highlight or ins.heading[:10], "body": ins.heading[:14]} for ins in spec.insights[:2]]
+    )
+    for idx, rr in enumerate(right_rows[:2]):
+        ky = 3.64 + idx * 1.24
+        col = pal.s1 if idx == 0 else pal.s2
+        add_rounded_box(slide, 8.98, ky, 3.79, 1.10, fill_hex=blend_with_white(pal.s6, 0.38), border_hex="#D6E0EC", border_pt=0.75, radius=0.06)
+        add_rect(slide, 9.04, ky + 0.12, 0.06, 0.86, fill_hex=col)
+        add_box_text(slide, 9.18, ky + 0.10, 3.48, 0.42, str(rr.get("title", ""))[:16], size_pt=16.5, bold=True, color_hex=col, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, 9.18, ky + 0.54, 3.48, 0.48, str(rr.get("body", ""))[:20], size_pt=14.0, color_hex=pal.ink, ea_font=ea_f, latin_font=lat_f)
+
+
 _V5_DISPATCH = {
     LayoutId.lit_overview_dual_card: _build_lit_overview_dual_card,
     LayoutId.mechanism_3col_flow: _build_mechanism_3col_flow,
@@ -1016,6 +1262,11 @@ _V5_DISPATCH = {
     LayoutId.fig_left_3step_chain: _build_fig_left_3step_chain,
     LayoutId.vs_center_wing: _build_vs_center_wing,
     LayoutId.roadmap_layered_matrix: _build_roadmap_layered_matrix,
+    LayoutId.timeline_chevron_flow: _build_timeline_chevron_flow,
+    LayoutId.quadrant_2x2_matrix: _build_quadrant_2x2_matrix,
+    LayoutId.hub_spoke_radial: _build_hub_spoke_radial,
+    LayoutId.dual_compare_cards: _build_dual_compare_cards,
+    LayoutId.tri_column_showcase: _build_tri_column_showcase,
 }
 
 
