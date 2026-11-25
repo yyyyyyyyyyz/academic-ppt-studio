@@ -658,14 +658,20 @@ def _build_data_dashboard_table(slide, spec: SlideSpec, deck: DeckSpec, pal: Sci
         table_bottom = 1.50 + row_h * rows_count
 
     scards = spec.strategy_cards or [
-        {"badge": "代谢瓶颈", "badge_color": "#D97706", "title": ins.heading, "body": ins.body}
-        for ins in spec.insights[:2]
+        {"badge": "代谢瓶颈", "badge_color": "s1" if idx == 0 else "s2", "title": ins.heading, "body": ins.body}
+        for idx, ins in enumerate(spec.insights[:2])
     ]
     cur_y = table_bottom + 0.14
     avail_h = max(0.88, (6.14 - cur_y - 0.10 * max(len(scards) - 1, 0)) / max(len(scards), 1))
     for idx, sc in enumerate(scards[:2]):
         sy = cur_y + idx * (avail_h + 0.10)
-        bcol = sc.get("badge_color", pal.s1)
+        raw_bcol = str(sc.get("badge_color") or "").strip()
+        if not raw_bcol or raw_bcol in ("s1", "#00468B", "#D97706"):
+            bcol = pal.s1 if idx == 0 else pal.s2
+        elif raw_bcol in ("s2", "s3", "s4", "s5", "s6", "alert", "ink", "muted"):
+            bcol = pal.token(raw_bcol)
+        else:
+            bcol = raw_bcol
         add_rounded_box(slide, 8.12, sy, 4.81, avail_h, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True)
         add_rect(slide, 8.20, sy + 0.12, 0.06, avail_h - 0.24, fill_hex=bcol)
         add_rounded_box(slide, 8.34, sy + 0.10, 1.14, 0.28, fill_hex=bcol, border_hex=None, radius=0.14)

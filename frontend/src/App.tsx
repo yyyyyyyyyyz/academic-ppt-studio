@@ -136,10 +136,34 @@ export function App() {
     }
   }, [aiConfig.provider, aiConfig.accessCode]);
 
+  const appendCacheBust = (url: string | null | undefined, ts: number): string => {
+    if (!url) return "";
+    const sep = url.includes("?") ? "&" : "?";
+    return `${url}${sep}t=${ts}`;
+  };
+
+  const bustAssetBundleMap = (
+    map: Record<string, AssetUrlBundle>,
+    ts: number,
+  ): Record<string, AssetUrlBundle> => {
+    const out: Record<string, AssetUrlBundle> = {};
+    for (const [k, bundle] of Object.entries(map)) {
+      out[k] = {
+        ...bundle,
+        png_url: bundle.png_url ? appendCacheBust(bundle.png_url, ts) : bundle.png_url,
+        candidates: (bundle.candidates || []).map((c) => ({
+          ...c,
+          png_url: c.png_url ? appendCacheBust(c.png_url, ts) : c.png_url,
+        })),
+      };
+    }
+    return out;
+  };
+
   const refreshSlidePreview = async (curDeck: DeckSpec, slideNo: number, layers: string[]) => {
     const res = await renderSlideLayersPreview(curDeck, slideNo, layers);
     const key = `slide_${String(slideNo).padStart(2, "0")}`;
-    setPreviewUrls((prev) => ({ ...prev, [key]: `${res.preview_url}?t=${Date.now()}` }));
+    setPreviewUrls((prev) => ({ ...prev, [key]: appendCacheBust(res.preview_url, Date.now()) }));
   };
 
   const handlePlanText = async (payload: {
@@ -321,7 +345,7 @@ export function App() {
       const updatedSlide = { ...currentSlide, figure_spec: res.figure_spec };
       const nextDeck = { ...deck, slides: deck.slides.map((s) => (s.slide_no === updatedSlide.slide_no ? updatedSlide : s)) };
       setDeck(nextDeck);
-      setAssetUrls((prev) => ({ ...prev, ...res.asset_urls }));
+      setAssetUrls((prev) => ({ ...prev, ...bustAssetBundleMap(res.asset_urls, Date.now()) }));
       await refreshSlidePreview(nextDeck, updatedSlide.slide_no, activeLayers);
     } catch (err) {
       setErrorMsg(String(err));
@@ -339,6 +363,7 @@ export function App() {
     fixed_bond_length_px?: number;
     origin_preset?: string;
     render_mode?: string;
+    mech_mode_override?: string;
     chem_style_override?: string;
   }) => {
     if (!deck || !currentSlide?.figure_spec) return;
@@ -354,7 +379,7 @@ export function App() {
       const updatedSlide = { ...currentSlide, figure_spec: res.figure_spec };
       const nextDeck = { ...deck, slides: deck.slides.map((s) => (s.slide_no === updatedSlide.slide_no ? updatedSlide : s)) };
       setDeck(nextDeck);
-      setAssetUrls((prev) => ({ ...prev, ...res.asset_urls }));
+      setAssetUrls((prev) => ({ ...prev, ...bustAssetBundleMap(res.asset_urls, Date.now()) }));
       await refreshSlidePreview(nextDeck, updatedSlide.slide_no, activeLayers);
     } catch (err) {
       setErrorMsg(String(err));
@@ -376,7 +401,7 @@ export function App() {
       const updatedSlide = { ...currentSlide, figure_spec: { ...currentSlide.figure_spec, assets: updatedAssets } };
       const nextDeck = { ...deck, slides: deck.slides.map((s) => (s.slide_no === updatedSlide.slide_no ? updatedSlide : s)) };
       setDeck(nextDeck);
-      setAssetUrls((prev) => ({ ...prev, [assetId]: { png_url: `${res.png_url}?t=${Date.now()}` } }));
+      setAssetUrls((prev) => ({ ...prev, [assetId]: { png_url: appendCacheBust(res.png_url, Date.now()) } }));
       await refreshSlidePreview(nextDeck, updatedSlide.slide_no, activeLayers);
     } catch (err) {
       setErrorMsg(String(err));
@@ -390,9 +415,14 @@ export function App() {
     setBusy(true);
     try {
       const res = await applyPaletteToDeck(deck, paletteId, true);
+      const ts = Date.now();
+      const bustedPreviews: Record<string, string> = {};
+      for (const [k, u] of Object.entries(res.artifact_urls || {})) {
+        bustedPreviews[k] = appendCacheBust(u, ts);
+      }
       setDeck(res.deck_spec);
-      setPreviewUrls(res.artifact_urls);
-      setAssetUrls(res.asset_urls);
+      setPreviewUrls(bustedPreviews);
+      setAssetUrls(bustAssetBundleMap(res.asset_urls || {}, ts));
       setPaletteOpen(false);
     } catch (err) {
       setErrorMsg(String(err));

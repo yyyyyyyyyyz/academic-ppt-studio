@@ -214,6 +214,7 @@ export async function selectOrRefineFigure(payload: {
   highlight_atoms?: number[];
   origin_preset?: string;
   render_mode?: string;
+  mech_mode_override?: string;
   chem_style_override?: string;
 }): Promise<{ figure_spec: FigureSpec; asset_urls: Record<string, AssetUrlBundle> }> {
   return jsonReq("/api/figures/select-or-refine", { method: "POST", body: JSON.stringify(payload) });

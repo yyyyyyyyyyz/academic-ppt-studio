@@ -356,6 +356,7 @@ class SelectOrRefineFigureRequest(BaseModel):
     highlight_atoms: Optional[List[int]] = None
     origin_preset: Optional[str] = None
     render_mode: Optional[str] = None
+    mech_mode_override: Optional[str] = None
     chem_style_override: Optional[str] = None
 
 

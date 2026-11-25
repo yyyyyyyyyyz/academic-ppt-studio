@@ -81,16 +81,16 @@ app.add_middleware(
 
 
 ARCHETYPE_CATALOG = [
-    {"id": ArchetypeId.A01.value, "name": "A01 · 3D 剖切装置 + 放大镜微界面", "engines": ["sci3d_art", "vector_mech"]},
-    {"id": ArchetypeId.A02.value, "name": "A02 · 3D 团聚失效 vs 多孔限域分散", "engines": ["sci3d_art"]},
-    {"id": ArchetypeId.A03.value, "name": "A03 · 2D 扁平微立体编辑插画", "engines": ["sci3d_art"]},
-    {"id": ArchetypeId.A04.value, "name": "A04 · CYLview 3D 球棍分子模型", "engines": ["cylview_3d"]},
-    {"id": ArchetypeId.A05.value, "name": "A05 · ChemDraw ACS 1996 + 柔色光晕", "engines": ["chemdraw_rdkit"]},
-    {"id": ArchetypeId.A06.value, "name": "A06 · OriginPro 600 DPI 1:1 定量谱学", "engines": ["origin_plot"]},
-    {"id": ArchetypeId.A07.value, "name": "A07 · VESTA 晶体多面体 + 双色硬切分屏", "engines": ["sci3d_art"]},
-    {"id": ArchetypeId.A08.value, "name": "A08 · Nature Reviews 黑线扁平多尺度三联", "engines": ["sci3d_art"]},
-    {"id": ArchetypeId.A09.value, "name": "A09 · 同心圆环综述与 BioRender 通路", "engines": ["vector_mech"]},
-    {"id": ArchetypeId.A10.value, "name": "A10 · 全矢量催化双循环 / 路线 / 象限", "engines": ["vector_mech"]},
+    {"id": ArchetypeId.A05.value, "name": "ChemDraw 2D · 高清分子结构式（6 种画风 + .cdxml）", "engines": ["chemdraw_rdkit"]},
+    {"id": ArchetypeId.A04.value, "name": "PyMOL / CYLview 3D · 球棍构象（+ .sdf）", "engines": ["cylview_3d"]},
+    {"id": ArchetypeId.A06.value, "name": "OriginPro / Nature · 600 DPI 统计与谱学图（+ .csv）", "engines": ["origin_plot"]},
+    {"id": ArchetypeId.A10.value, "name": "专业机理与路线 · 3D球棍机理 / 催化循环 / 技术路线", "engines": ["vector_mech"]},
+    {"id": ArchetypeId.A09.value, "name": "综述分类图 · 同心圆环 Sunburst", "engines": ["vector_mech"]},
+    {"id": ArchetypeId.A01.value, "name": "AI 3D 概念图 · 反应装置剖切与微界面（接生图模型更佳）", "engines": ["sci3d_art", "vector_mech"]},
+    {"id": ArchetypeId.A02.value, "name": "AI 3D 概念图 · 团聚 vs 限域分散对比（接生图模型更佳）", "engines": ["sci3d_art"]},
+    {"id": ArchetypeId.A03.value, "name": "AI 2D 概念图 · 物理场激活编辑插画（接生图模型更佳）", "engines": ["sci3d_art"]},
+    {"id": ArchetypeId.A07.value, "name": "AI 晶体界面图 · VESTA 多面体双色分屏（接生图模型更佳）", "engines": ["sci3d_art"]},
+    {"id": ArchetypeId.A08.value, "name": "AI 多尺度线稿 · 宏观-介观-微观三联（接生图模型更佳）", "engines": ["sci3d_art"]},
 ]
 
 COVER_TEMPLATE_CATALOG = [
@@ -536,9 +536,19 @@ async def api_plan_upload(
     return _run_plan(req, request, parsed_doc=parsed_doc, deck_id=deck_id)
 
 
-def _asset_url_entry(asset: FigureAsset) -> Dict[str, object]:
+def _with_cache_bust(url: Optional[str], tag: str) -> Optional[str]:
+    if not url:
+        return None
+    sep = "&" if "?" in url else "?"
+    return f"{url}{sep}v={tag}"
+
+
+def _asset_url_entry(asset: FigureAsset, cache_tag: Optional[str] = None) -> Dict[str, object]:
+    png_u = _to_artifact_url(asset.png_path)
+    if cache_tag and png_u:
+        png_u = _with_cache_bust(png_u, cache_tag)
     return {
-        "png_url": _to_artifact_url(asset.png_path),
+        "png_url": png_u,
         "svg_url": _to_artifact_url(asset.svg_path),
         "cdxml_url": _to_artifact_url(asset.cdxml_path),
         "sdf_url": _to_artifact_url(asset.sdf_path),
@@ -546,7 +556,7 @@ def _asset_url_entry(asset: FigureAsset) -> Dict[str, object]:
         "candidates": [
             {
                 "candidate_id": c.candidate_id,
-                "png_url": _to_artifact_url(c.png_path),
+                "png_url": _with_cache_bust(_to_artifact_url(c.png_path), cache_tag) if cache_tag else _to_artifact_url(c.png_path),
                 "ocr_text_count": c.ocr_text_count,
                 "vlm_aesthetic_score": c.vlm_aesthetic_score,
                 "passed": c.passed,
@@ -556,20 +566,21 @@ def _asset_url_entry(asset: FigureAsset) -> Dict[str, object]:
     }
 
 
-def _collect_asset_urls(deck: DeckSpec) -> Dict[str, object]:
+def _collect_asset_urls(deck: DeckSpec, cache_tag: Optional[str] = None) -> Dict[str, object]:
     urls: Dict[str, object] = {}
     for sl in deck.slides:
         if not sl.figure_spec:
             continue
         for asset in sl.figure_spec.assets:
-            urls[asset.asset_id] = _asset_url_entry(asset)
+            urls[asset.asset_id] = _asset_url_entry(asset, cache_tag=cache_tag)
     return urls
 
 
 @app.post("/api/figures/generate")
 def api_figures_generate(req: GenerateFigureRequest, request: Request) -> Dict[str, object]:
     d_dir = _deck_dir(req.deck_id)
-    out_dir = d_dir / "figures" / f"slide_{req.slide_no:02d}_{uuid.uuid4().hex[:4]}"
+    bust = uuid.uuid4().hex[:6]
+    out_dir = d_dir / "figures" / f"slide_{req.slide_no:02d}_{bust}"
     req_settings, provider = _request_provider(request)
     factory = ScientificFigureFactory(settings=req_settings, provider=provider)
     res_spec = factory.render_figure_spec(
@@ -581,7 +592,7 @@ def api_figures_generate(req: GenerateFigureRequest, request: Request) -> Dict[s
     )
     return {
         "figure_spec": res_spec.model_dump(),
-        "asset_urls": {a.asset_id: _asset_url_entry(a) for a in res_spec.assets},
+        "asset_urls": {a.asset_id: _asset_url_entry(a, cache_tag=bust) for a in res_spec.assets},
     }
 
 
@@ -629,20 +640,23 @@ def api_figures_select_or_refine(req: SelectOrRefineFigureRequest, request: Requ
             asset.preset = req.origin_preset
         if req.render_mode:
             asset.render_mode = req.render_mode
+        if req.mech_mode_override:
+            asset.mech_mode = req.mech_mode_override
         if req.refinement_instruction:
             asset.refinement_note = req.refinement_instruction
 
     d_dir = _deck_dir(req.deck_id)
     req_settings, provider = _request_provider(request)
     factory = ScientificFigureFactory(settings=req_settings, provider=provider)
+    bust = uuid.uuid4().hex[:6]
     updated = factory.render_figure_spec(
         fspec,
-        output_dir=d_dir / "figures" / f"slide_{req.slide_no:02d}_refine_{uuid.uuid4().hex[:4]}",
+        output_dir=d_dir / "figures" / f"slide_{req.slide_no:02d}_refine_{bust}",
         palette_id=req.palette_id,
     )
     return {
         "figure_spec": updated.model_dump(),
-        "asset_urls": {a.asset_id: _asset_url_entry(a) for a in updated.assets},
+        "asset_urls": {a.asset_id: _asset_url_entry(a, cache_tag=bust) for a in updated.assets},
     }
 
 
@@ -677,6 +691,7 @@ def api_palettes_apply(req: PaletteApplyRequest) -> Dict[str, object]:
     deck.meta.palette_id = req.palette_id
     d_dir = _deck_dir(deck.meta.deck_id)
     factory = ScientificFigureFactory(settings=settings)
+    bust = f"{req.palette_id}_{uuid.uuid4().hex[:6]}"
 
     for sl in deck.slides:
         if req.rerender_figures and sl.figure_spec:
@@ -691,10 +706,13 @@ def api_palettes_apply(req: PaletteApplyRequest) -> Dict[str, object]:
     return {
         "deck_spec": deck.model_dump(by_alias=True),
         "artifact_urls": {
-            f"slide_{sl.slide_no:02d}": _to_artifact_url(str(d_dir / "previews" / f"slide_{sl.slide_no:02d}.png"))
+            f"slide_{sl.slide_no:02d}": _with_cache_bust(
+                _to_artifact_url(str(d_dir / "previews" / f"slide_{sl.slide_no:02d}.png")),
+                bust,
+            )
             for sl in deck.slides
         },
-        "asset_urls": _collect_asset_urls(deck),
+        "asset_urls": _collect_asset_urls(deck, cache_tag=bust),
     }
 
 
@@ -710,7 +728,7 @@ def api_preview_slide(payload: Dict[str, object]) -> Dict[str, object]:
     tag = "_".join(str(x) for x in layers)
     out_p = d_dir / "previews" / f"slide_{slide_no:02d}_{tag}.png"
     render_slide_preview_png(sl, deck, out_p, layers=list(layers))
-    return {"preview_url": _to_artifact_url(str(out_p))}
+    return {"preview_url": _with_cache_bust(_to_artifact_url(str(out_p)), uuid.uuid4().hex[:6])}
 
 
 @app.post("/api/build/pptx")

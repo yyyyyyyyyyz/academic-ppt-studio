@@ -242,6 +242,7 @@ export const SlideCanvasPreview: React.FC<SlideCanvasPreviewProps> = ({
         >
           {previewUrl ? (
             <img
+              key={previewUrl}
               src={previewUrl}
               alt={`Slide ${slide.slide_no}`}
               style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }}

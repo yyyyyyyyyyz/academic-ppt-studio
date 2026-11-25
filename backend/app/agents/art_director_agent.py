@@ -127,36 +127,21 @@ def build_default_figure_spec(
         return FigureSpec(
             figure_id=fid,
             archetype=ArchetypeId.A05,
-            visual_story_scale="molecular_2d_reaction",
+            visual_story_scale="molecular_2d_structure",
             box_in=box,
             assets=[
                 FigureAsset(
-                    asset_id=f"{fid}_sub",
-                    engine=EngineType.chemdraw_rdkit,
-                    smiles="Nc1ccccc1",
-                    label="Amine Substrate",
-                    highlight_atoms=[0],
-                    norm_box=[0.02, 0.14, 0.36, 0.72],
-                ),
-                FigureAsset(
-                    asset_id=f"{fid}_prod",
+                    asset_id=f"{fid}_mol",
                     engine=EngineType.chemdraw_rdkit,
                     smiles=mol_smiles,
-                    label="Target API Scaffold",
+                    label="Target Molecule (ChemDraw 2D)",
+                    chem_style="acs1996",
                     highlight_rings=True,
-                    norm_box=[0.52, 0.10, 0.46, 0.80],
-                ),
-            ],
-            native_overlays=[
-                NativeOverlay(
-                    type="reaction_arrow",
-                    from_in=[box.left + box.width * 0.38, box.top + box.height * 0.50],
-                    to_in=[box.left + box.width * 0.52, box.top + box.height * 0.50],
-                    label="Cat. · 45 min",
-                    color_token="s1",
+                    norm_box=[0.04, 0.06, 0.92, 0.88],
                 )
             ],
-            caption=f"Fig. {slide_no}  ACS 1996 reaction comparison with locked bond length and soft halo highlight.",
+            native_overlays=[],
+            caption=f"Fig. {slide_no}  Publication-grade 2D chemical structure rendered in ChemDraw ACS 1996 style.",
         )
 
     if archetype == ArchetypeId.A06:
@@ -239,7 +224,7 @@ def build_default_figure_spec(
             FigureAsset(
                 asset_id=f"{fid}_mech",
                 engine=EngineType.vector_mech,
-                mech_mode="gap_quadrant" if is_proposal else "dual_cycle",
+                mech_mode="gap_quadrant" if is_proposal else "molecular_3d_pathway",
             )
         ],
         caption=f"Fig. {slide_no}  Native editable vector mechanism schematic.",
@@ -266,13 +251,13 @@ class ArtDirectorAgent:
         if any(k in txt for k in ("立体", "配合物", "构象", "对接", "口袋", "变构", "3d", "cylview")):
             return (ArchetypeId.A04, None, None)
         if any(k in txt for k in ("合成", "背景", "痛点", "药", "抑制剂", "骨架", "先导", "sar", "构效", "底物", "chemdraw", "c–n")):
-            return (ArchetypeId.A05, None, None) if content_index % 2 == 0 else (ArchetypeId.A01, None, None)
-        if any(k in txt for k in ("循环", "机理", "催化", "能垒")):
-            return (ArchetypeId.A10, None, "dual_cycle")
+            return (ArchetypeId.A05, None, None) if content_index % 2 == 0 else (ArchetypeId.A04, None, None)
+        if any(k in txt for k in ("循环", "机理", "催化", "能垒", "自由基", "降解", "途径")):
+            return (ArchetypeId.A10, None, "pd_coupling_cycle") if any(k in txt for k in ("偶联", "pd", "循环")) else (ArchetypeId.A10, None, "molecular_3d_pathway")
         if any(k in txt for k in ("晶面", "vesta", "双电层", "界面")):
             return (ArchetypeId.A07, None, None)
         if any(k in txt for k in ("总结", "展望", "outlook", "summary")):
-            return (ArchetypeId.A08, None, None)
+            return (ArchetypeId.A10, None, "roadmap_4stage")
 
         # Quantitative data routing (blocked if proposal without verified data)
         if not is_proposal:
@@ -285,18 +270,17 @@ class ArtDirectorAgent:
             if any(k in txt for k in ("ml", "机器学习", "预测")):
                 return (ArchetypeId.A06, "ml_parity_kde", None)
             if any(k in txt for k in ("动力学", "收率", "绿色度", "pmi", "定量", "效率")):
-                return (ArchetypeId.A06, "paired_gain_bar", None)
+                return (ArchetypeId.A06, "nature_grouped_bar", None)
 
-        # Diverse fallback rotation across archetypes
+        # Deterministic professional engine rotation (ChemDraw, PyMOL 3D, OriginPro, VectorMech)
         rotation = [
-            (ArchetypeId.A01, None, None),
-            (ArchetypeId.A03, None, None),
-            (ArchetypeId.A10, None, "roadmap_4stage"),
-            (ArchetypeId.A04, None, None),
             (ArchetypeId.A05, None, None),
-            (ArchetypeId.A02, None, None),
-            (ArchetypeId.A06 if not is_proposal else ArchetypeId.A10, "kinetics_spline", "delta_g_concept"),
-            (ArchetypeId.A08, None, None),
+            (ArchetypeId.A04, None, None),
+            (ArchetypeId.A10, None, "roadmap_4stage"),
+            (ArchetypeId.A10, None, "molecular_3d_pathway"),
+            (ArchetypeId.A06 if not is_proposal else ArchetypeId.A10, "nature_grouped_bar", "delta_g_concept"),
+            (ArchetypeId.A10, None, "gap_quadrant"),
+            (ArchetypeId.A09, None, "sunburst_pathway"),
         ]
         return rotation[content_index % len(rotation)]
 
@@ -393,8 +377,8 @@ class ArtDirectorAgent:
                 )
             if not slide.strategy_cards:
                 slide.strategy_cards = [
-                    {"badge": "要点解析", "badge_color": "#00468B", "title": ins.heading, "body": ins.body}
-                    for ins in slide.insights[:2]
+                    {"badge": "要点解析", "badge_color": "s1" if idx == 0 else "s2", "title": ins.heading, "body": ins.body}
+                    for idx, ins in enumerate(slide.insights[:2])
                 ]
         elif slide.layout_id in (LayoutId.bg_top_summary_3box, LayoutId.fig_left_3step_chain):
             if not slide.bottom_banner:

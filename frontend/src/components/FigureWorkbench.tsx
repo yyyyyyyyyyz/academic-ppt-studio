@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Wand2, RefreshCw, Upload, Check, Sparkles, Download } from "lucide-react";
 import type {
   ArchetypeId,
@@ -25,10 +25,21 @@ interface FigureWorkbenchProps {
     fixed_bond_length_px?: number;
     origin_preset?: string;
     render_mode?: string;
+    mech_mode_override?: string;
     chem_style_override?: string;
   }) => Promise<void>;
   onUploadReplacement: (file: File, assetId: string) => Promise<void>;
 }
+
+const MECH_MODES = [
+  { id: "molecular_3d_pathway", label: "3D 球棍反应机理路径（对标图3 · 虚线放大框）" },
+  { id: "pd_coupling_cycle", label: "Pd / 过渡金属催化循环图" },
+  { id: "dual_cycle", label: "双循环协同催化机理图" },
+  { id: "roadmap_4stage", label: "四阶段科研技术路线图" },
+  { id: "gap_quadrant", label: "研究空白与性能四象限图" },
+  { id: "delta_g_concept", label: "反应能垒 ΔG 概念示意图" },
+  { id: "sunburst_pathway", label: "同心圆环综述分类 Sunburst" },
+];
 
 const CHEM_STYLES = [
   { id: "acs1996", label: "ACS 1996 经典出版风" },
@@ -67,6 +78,11 @@ export const FigureWorkbench: React.FC<FigureWorkbenchProps> = ({
   const [smilesInput, setSmilesInput] = useState("");
   const [bondLen, setBondLen] = useState<number>(28);
   const uploadRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    setSmilesInput("");
+    setRefineText("");
+  }, [slide.slide_no, fig?.figure_id]);
 
   if (!fig) {
     return (
@@ -208,7 +224,7 @@ export const FigureWorkbench: React.FC<FigureWorkbenchProps> = ({
         {/* Archetype A01-A10 Selector */}
         <label style={{ fontSize: 12 }}>
           <div className="kicker" style={{ color: "var(--ink-muted)", marginBottom: 5 }}>
-            FIGURE ARCHETYPE (A01–A10)
+            SCIENTIFIC FIGURE ENGINE · 科研绘图类型与引擎
           </div>
           <select
             className="editorial-select"
@@ -352,6 +368,38 @@ export const FigureWorkbench: React.FC<FigureWorkbenchProps> = ({
             >
               应用分子参数并重新计算
             </button>
+          </div>
+        )}
+
+        {primaryAsset && primaryAsset.engine === "vector_mech" && (
+          <div
+            style={{
+              padding: 12,
+              borderRadius: 2,
+              background: "var(--paper-bg)",
+              border: "1px solid var(--rule-hairline)",
+            }}
+          >
+            <div className="kicker" style={{ color: "var(--oxford-navy)", marginBottom: 6 }}>
+              MECHANISM & PATHWAY MODE · 专业机理 / 流程图模式
+            </div>
+            <select
+              className="editorial-select"
+              value={primaryAsset.mech_mode || "molecular_3d_pathway"}
+              disabled={busy}
+              onChange={(e) =>
+                onRefineOrSwitch({
+                  asset_id: primaryAsset.asset_id,
+                  mech_mode_override: e.target.value,
+                })
+              }
+            >
+              {MECH_MODES.map((mm) => (
+                <option key={mm.id} value={mm.id}>
+                  {mm.label}
+                </option>
+              ))}
+            </select>
           </div>
         )}
 

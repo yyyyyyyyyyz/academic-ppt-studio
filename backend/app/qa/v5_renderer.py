@@ -32,6 +32,16 @@ def _px(val_in: float) -> int:
     return int(round(val_in * SCALE))
 
 
+def _resolve_strategy_badge_color(raw: Optional[str], pal: ScientificPalette, idx: int) -> str:
+    """Resolve strategy card badge color dynamically against active palette unless custom hex."""
+    val = (raw or "").strip()
+    if not val or val in ("s1", "#00468B", "#D97706"):
+        return pal.s1 if idx == 0 else pal.s2
+    if val in ("s2", "s3", "s4", "s5", "s6", "alert", "ink", "muted"):
+        return pal.token(val)
+    return val
+
+
 def _has_cjk(text: str) -> bool:
     return any(
         "\u3000" <= ch <= "\u303f" or "\u4e00" <= ch <= "\u9fff" or "\uff00" <= ch <= "\uffef"
@@ -768,12 +778,15 @@ def render_v5_slide_preview(
                         _draw_text_box(draw, 8.12 + c_i * col_w + 0.06, ry, col_w - 0.12, row_h, val, size_pt=14.0, bold=is_last, color_hex=pal.s1 if is_last else pal.ink, align="center" if c_i > 0 else "left", ea_font=ea_f, latin_font=lat_f)
             table_bottom = 1.50 + row_h * rows_count
 
-        scards = spec.strategy_cards or [{"badge": "策略", "badge_color": "#D97706", "title": i.heading, "body": i.body} for i in spec.insights[:2]]
+        scards = spec.strategy_cards or [
+            {"badge": "策略", "badge_color": "s1" if idx == 0 else "s2", "title": i.heading, "body": i.body}
+            for idx, i in enumerate(spec.insights[:2])
+        ]
         cur_y = table_bottom + 0.14
         avail_h = max(0.88, (6.14 - cur_y - 0.10 * max(len(scards) - 1, 0)) / max(len(scards), 1))
         for idx, sc in enumerate(scards[:2]):
             sy = cur_y + idx * (avail_h + 0.10)
-            bcol = sc.get("badge_color", pal.s1)
+            bcol = _resolve_strategy_badge_color(sc.get("badge_color"), pal, idx)
             if show_l2:
                 _draw_elevated_box(canvas, 8.12, sy, 4.81, avail_h, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_px=1, radius=0.06)
                 draw = ImageDraw.Draw(canvas)

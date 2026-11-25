@@ -180,3 +180,108 @@ def test_api_2d_3d_switch_and_source_export_urls(tmp_path: Path, monkeypatch) ->
     assert asset_3d["smiles"] == resolve_compound_smiles("青蒿素")
     urls_3d = d3["asset_urls"][asset_3d["asset_id"]]
     assert urls_3d["sdf_url"] and client.get(urls_3d["sdf_url"]).status_code == 200
+
+
+def test_a05_uses_user_molecule_not_hardcoded_aniline() -> None:
+    from app.agents.art_director_agent import build_default_figure_spec
+
+    aspirin = "CC(=O)Oc1ccccc1C(=O)O"
+    fspec = build_default_figure_spec(ArchetypeId.A05, slide_no=2, smiles=aspirin)
+    assert len(fspec.assets) == 1
+    assert fspec.assets[0].engine == EngineType.chemdraw_rdkit
+    assert fspec.assets[0].smiles == aspirin
+    assert fspec.native_overlays == []
+
+
+def test_select_or_refine_mech_mode_override(tmp_path: Path, monkeypatch) -> None:
+    test_settings = Settings(
+        artifacts_root=tmp_path / "artifacts",
+        decks_root=tmp_path / "artifacts" / "decks",
+        gallery_root=tmp_path / "artifacts" / "archetype_gallery",
+        demo_deck_root=tmp_path / "artifacts" / "demo_deck",
+        llm_provider_mode="local",
+        figure_provider_mode="local",
+    )
+    monkeypatch.setattr(main_mod, "settings", test_settings)
+    client = TestClient(main_mod.app)
+
+    init_spec = FigureSpec(
+        figure_id="fig_04",
+        archetype=ArchetypeId.A05,
+        box_in=FigureBoxIn(left=0.5, top=1.7, width=7.5, height=4.4),
+        assets=[FigureAsset(asset_id="mol_main", engine=EngineType.chemdraw_rdkit, smiles="COc1ccccc1")],
+    )
+    resp = client.post(
+        "/api/figures/select-or-refine",
+        json={
+            "deck_id": "deck_test_mech",
+            "slide_no": 4,
+            "palette_id": "lancet",
+            "figure_spec": init_spec.model_dump(),
+            "archetype_override": "A10_vector_cycle",
+            "mech_mode_override": "molecular_3d_pathway",
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    ast = body["figure_spec"]["assets"][0]
+    assert ast["engine"] == "vector_mech"
+    assert ast["mech_mode"] == "molecular_3d_pathway"
+    png_url = body["asset_urls"][ast["asset_id"]]["png_url"]
+    assert png_url and client.get(png_url).status_code == 200
+
+
+def test_palette_apply_recolors_slide_pixels_and_cache_busts(tmp_path: Path, monkeypatch) -> None:
+    import numpy as np
+    from io import BytesIO
+
+    test_settings = Settings(
+        artifacts_root=tmp_path / "artifacts",
+        decks_root=tmp_path / "artifacts" / "decks",
+        gallery_root=tmp_path / "artifacts" / "archetype_gallery",
+        demo_deck_root=tmp_path / "artifacts" / "demo_deck",
+        llm_provider_mode="local",
+        figure_provider_mode="local",
+    )
+    monkeypatch.setattr(main_mod, "settings", test_settings)
+    client = TestClient(main_mod.app)
+
+    plan_resp = client.post(
+        "/api/plan",
+        json={
+            "source_text": "# Test\n## 1. 背景\nOsimertinib 抑制 EGFR。\n## 2. 活性\nIC50 = 1.8 nM。\n## 3. 总结\n完成先导化合物优化。",
+            "deck_title": "Palette Switch Verification",
+            "author": "Tester",
+            "affiliation": "Lab",
+            "scenario": "defense",
+            "target_slide_count": 5,
+            "palette_id": "lancet",
+            "is_proposal": False,
+        },
+    )
+    assert plan_resp.status_code == 200
+    plan_data = plan_resp.json()
+    deck_spec = plan_data["deck_spec"]
+
+    lancet_cover_bytes = client.get(plan_data["artifact_urls"]["slide_01"]).content
+    lancet_content_bytes = client.get(plan_data["artifact_urls"]["slide_03"]).content
+
+    pal_resp = client.post(
+        "/api/palettes/apply",
+        json={"deck_spec": deck_spec, "palette_id": "nature", "rerender_figures": True},
+    )
+    assert pal_resp.status_code == 200
+    pal_data = pal_resp.json()
+    assert "?v=nature_" in pal_data["artifact_urls"]["slide_01"]
+    assert "?v=nature_" in pal_data["artifact_urls"]["slide_03"]
+
+    nature_cover_bytes = client.get(pal_data["artifact_urls"]["slide_01"]).content
+    nature_content_bytes = client.get(pal_data["artifact_urls"]["slide_03"]).content
+
+    im_l1 = np.asarray(Image.open(BytesIO(lancet_cover_bytes)).convert("RGB"), dtype=np.int16)
+    im_n1 = np.asarray(Image.open(BytesIO(nature_cover_bytes)).convert("RGB"), dtype=np.int16)
+    im_l3 = np.asarray(Image.open(BytesIO(lancet_content_bytes)).convert("RGB"), dtype=np.int16)
+    im_n3 = np.asarray(Image.open(BytesIO(nature_content_bytes)).convert("RGB"), dtype=np.int16)
+
+    assert float(np.mean(np.abs(im_l1 - im_n1))) > 5.0
+    assert float(np.mean(np.abs(im_l3 - im_n3))) > 1.0
