@@ -26,6 +26,7 @@ interface SlideCanvasPreviewProps {
   deck: DeckSpec;
   slide: SlideSpec;
   previewUrl?: string;
+  accentColor?: string;
   activeLayers: string[];
   onToggleLayer: (layer: string) => void;
   onUpdateSlide: (updated: SlideSpec) => void;
@@ -37,6 +38,7 @@ export const SlideCanvasPreview: React.FC<SlideCanvasPreviewProps> = ({
   deck,
   slide,
   previewUrl,
+  accentColor = "var(--rule-strong)",
   activeLayers,
   onToggleLayer,
   onUpdateSlide,
@@ -75,7 +77,7 @@ export const SlideCanvasPreview: React.FC<SlideCanvasPreviewProps> = ({
           background: "var(--surface-pure)",
           borderRadius: 2,
           border: "1px solid var(--rule-hairline)",
-          borderTop: "2px solid var(--rule-strong)",
+          borderTop: `2px solid ${accentColor}`,
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 12 }}>

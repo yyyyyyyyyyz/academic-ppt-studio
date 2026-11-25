@@ -34,6 +34,7 @@ from pydantic import BaseModel, Field
 
 from .agents.art_director_agent import build_default_figure_spec
 from .agents.doc_parser import ParsedDocument, parse_document_file
+from .agents.outline_agent import OutlineAgent, load_word_outline_skill
 from .agents.planner_agent import PlannerAgent
 from .agents.qa_agent import SlideVisualQAAgent
 from .billing import BillingError, BillingStore, default_billing_db_path
@@ -422,6 +423,48 @@ def api_archetypes() -> Dict[str, object]:
 @app.get("/api/cover-templates")
 def api_cover_templates() -> Dict[str, object]:
     return {"cover_templates": COVER_TEMPLATE_CATALOG}
+
+
+@app.get("/api/skills/word-outline")
+def api_get_word_outline_skill() -> Dict[str, object]:
+    return {
+        "name": "word-to-ppt-outline",
+        "version": "1.0",
+        "content": load_word_outline_skill(),
+    }
+
+
+@app.post("/api/outline/from-file")
+async def api_outline_from_file(
+    request: Request,
+    file: UploadFile = File(...),
+    target_slide_count: int = Form(default=8),
+    scenario: ScenarioType = Form(default=ScenarioType.defense),
+    is_proposal: bool = Form(default=False),
+) -> Dict[str, object]:
+    outline_dir = _deck_dir(f"outline_{uuid.uuid4().hex[:8]}")
+    upload_p = outline_dir / f"source_{Path(file.filename or 'input.docx').name}"
+    _save_upload_limited(file, upload_p)
+    fallback_title = Path(file.filename or "学术研究工作汇报").stem
+    parsed_doc = parse_document_file(
+        upload_p,
+        image_output_dir=outline_dir / "word_images",
+        default_title=fallback_title,
+    )
+
+    try:
+        _, provider, _ = _resolve_request_provider(request, consume_for_plan=False)
+    except HTTPException:
+        local_cfg = replace(settings, llm_provider_mode="local", figure_provider_mode="local")
+        provider = ModelProvider(local_cfg)
+
+    agent = OutlineAgent(provider=provider)
+    return agent.summarize_document_to_outline(
+        parsed_doc,
+        target_slide_count=target_slide_count,
+        scenario=scenario,
+        is_proposal=is_proposal,
+    )
 
 
 def _run_plan(

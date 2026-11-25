@@ -4,6 +4,7 @@ import type { SlideSpec } from "../types/deckSpec";
 interface DeckOutlinePanelProps {
   slides: SlideSpec[];
   selectedSlideNo: number;
+  accentColor?: string;
   onSelectSlide: (slideNo: number) => void;
   onAddContentSlide: () => void;
   onDeleteSlide: (slideNo: number) => void;
@@ -12,6 +13,7 @@ interface DeckOutlinePanelProps {
 export const DeckOutlinePanel: React.FC<DeckOutlinePanelProps> = ({
   slides,
   selectedSlideNo,
+  accentColor = "var(--nature-crimson)",
   onSelectSlide,
   onAddContentSlide,
   onDeleteSlide,
@@ -33,6 +35,7 @@ export const DeckOutlinePanel: React.FC<DeckOutlinePanelProps> = ({
         style={{
           padding: "13px 14px",
           borderBottom: "1px solid var(--rule-strong)",
+          borderTop: `2px solid ${accentColor}`,
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
@@ -41,7 +44,7 @@ export const DeckOutlinePanel: React.FC<DeckOutlinePanelProps> = ({
       >
         <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
           <span className="font-serif" style={{ fontWeight: 700, fontSize: 15.5, color: "var(--ink-primary)" }}>
-            页面
+            页面目录
           </span>
           <span className="font-mono" style={{ fontSize: 11.5, color: "var(--ink-muted)" }}>
             ({slides.length})
@@ -82,7 +85,7 @@ export const DeckOutlinePanel: React.FC<DeckOutlinePanelProps> = ({
                 padding: "11px 14px 11px 12px",
                 cursor: "pointer",
                 borderBottom: "1px solid #ECEAE3",
-                borderLeft: active ? "3px solid var(--nature-crimson)" : "3px solid transparent",
+                borderLeft: active ? `3px solid ${accentColor}` : "3px solid transparent",
                 background: active ? "var(--paper-bg)" : "var(--surface-pure)",
               }}
             >
@@ -91,8 +94,8 @@ export const DeckOutlinePanel: React.FC<DeckOutlinePanelProps> = ({
                   className="font-mono"
                   style={{
                     fontSize: 10.5,
-                    fontWeight: 600,
-                    color: active ? "var(--nature-crimson)" : "var(--oxford-navy)",
+                    fontWeight: 700,
+                    color: active ? accentColor : "var(--ink-muted)",
                   }}
                 >
                   #{String(sl.slide_no).padStart(2, "0")}

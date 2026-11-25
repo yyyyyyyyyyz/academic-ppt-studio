@@ -38,8 +38,8 @@ export const PaletteSelector: React.FC<PaletteSelectorProps> = ({
         className="editorial-fade-in"
         style={{
           width: "100%",
-          maxWidth: 880,
-          maxHeight: "84vh",
+          maxWidth: 900,
+          maxHeight: "86vh",
           background: "var(--surface-pure)",
           borderRadius: 2,
           border: "1px solid #D6D2C8",
@@ -61,7 +61,7 @@ export const PaletteSelector: React.FC<PaletteSelectorProps> = ({
           }}
         >
           <div className="font-serif" style={{ fontSize: 18, fontWeight: 700, color: "var(--ink-primary)" }}>
-            配色方案
+            顶刊配色方案
           </div>
           <button
             type="button"
@@ -78,7 +78,7 @@ export const PaletteSelector: React.FC<PaletteSelectorProps> = ({
             overflowY: "auto",
             background: "var(--paper-bg)",
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))",
+            gridTemplateColumns: "repeat(auto-fill, minmax(256px, 1fr))",
             gap: 12,
           }}
         >
@@ -91,26 +91,50 @@ export const PaletteSelector: React.FC<PaletteSelectorProps> = ({
                 style={{
                   borderRadius: 2,
                   cursor: busy ? "wait" : "pointer",
-                  border: isSelected ? "2px solid var(--nature-crimson)" : "1px solid #D6D2C8",
+                  border: isSelected ? `2px solid ${pal.tokens.s1}` : "1px solid #D6D2C8",
                   background: "var(--surface-pure)",
                   overflow: "hidden",
+                  boxShadow: isSelected ? "0 8px 20px rgba(23,23,23,0.10)" : "0 2px 6px rgba(23,23,23,0.03)",
                 }}
               >
-                <div style={{ display: "flex", height: 12, width: "100%" }}>
-                  {pal.series.slice(0, 5).map((hx) => (
+                <div style={{ display: "flex", height: 18, width: "100%" }}>
+                  {pal.series.slice(0, 6).map((hx) => (
                     <div key={hx} style={{ flex: 1, background: hx }} />
                   ))}
                 </div>
 
-                <div style={{ padding: "10px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span className="font-serif" style={{ fontSize: 14, fontWeight: 700, color: pal.tokens.s1 }}>
-                    {pal.name}
-                  </span>
-                  {isSelected && (
-                    <span className="font-mono" style={{ fontSize: 11, fontWeight: 700, color: "var(--nature-crimson)" }}>
-                      当前
+                <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span className="font-serif" style={{ fontSize: 14, fontWeight: 700, color: pal.tokens.s1 }}>
+                      {pal.name}
                     </span>
-                  )}
+                    {isSelected && (
+                      <span
+                        className="font-mono"
+                        style={{
+                          fontSize: 10.5,
+                          fontWeight: 700,
+                          color: "#FFFFFF",
+                          background: pal.tokens.s1,
+                          padding: "1px 6px",
+                          borderRadius: 2,
+                        }}
+                      >
+                        当前
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+                    {pal.series.slice(0, 5).map((hx) => (
+                      <span
+                        key={hx}
+                        className="font-mono"
+                        style={{ fontSize: 9.5, color: "var(--ink-muted)" }}
+                      >
+                        {hx}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
             );

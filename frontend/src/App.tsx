@@ -447,11 +447,13 @@ export function App() {
 
   const previewKey = currentSlide ? `slide_${String(currentSlide.slide_no).padStart(2, "0")}` : "";
   const activePlate = CURATED_PLATES[featuredPlateIdx] || CURATED_PLATES[0];
+  const activePaletteObj = deck ? palettes.find((p) => p.id === deck.meta.palette_id) : undefined;
+  const activeAccent = activePaletteObj?.tokens?.s1 || "#B5121B";
 
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--paper-bg)" }}>
-      {/* Tier 1: Nature Journal 3px Crimson Masthead Rule */}
-      <div style={{ height: 3, background: "var(--nature-crimson)", flexShrink: 0 }} />
+      {/* Tier 1: Theme Accent Masthead Rule */}
+      <div style={{ height: 3, background: activeAccent, flexShrink: 0, transition: "background-color 180ms ease" }} />
 
       {/* Tier 2: Archival White Masthead Bar */}
       <header
@@ -544,12 +546,26 @@ export function App() {
           {deck && (
             <>
               <button type="button" className="btn-editorial-ghost" onClick={() => setPaletteOpen(true)}>
+                <span
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: 2,
+                    background: activeAccent,
+                    display: "inline-block",
+                  }}
+                />
                 <span>配色</span>
-                <span className="font-mono" style={{ fontSize: 11, color: "var(--oxford-navy)" }}>
+                <span className="font-mono" style={{ fontSize: 11, color: activeAccent, fontWeight: 700 }}>
                   {deck.meta.palette_id}
                 </span>
               </button>
-              <button type="button" className="btn-editorial-primary" onClick={() => setExportOpen(true)}>
+              <button
+                type="button"
+                className="btn-editorial-primary"
+                onClick={() => setExportOpen(true)}
+                style={{ background: activeAccent, borderColor: activeAccent }}
+              >
                 导出 PPTX
               </button>
             </>
@@ -588,6 +604,7 @@ export function App() {
           <DeckOutlinePanel
             slides={deck.slides}
             selectedSlideNo={currentSlide.slide_no}
+            accentColor={activeAccent}
             onSelectSlide={setSelectedSlideNo}
             onAddContentSlide={handleAddContentSlide}
             onDeleteSlide={handleDeleteSlide}
@@ -596,6 +613,7 @@ export function App() {
             deck={deck}
             slide={currentSlide}
             previewUrl={previewUrls[previewKey]}
+            accentColor={activeAccent}
             activeLayers={activeLayers}
             onToggleLayer={handleToggleLayer}
             onUpdateSlide={handleUpdateSlide}
@@ -605,6 +623,7 @@ export function App() {
           <FigureWorkbench
             deckId={deck.meta.deck_id}
             paletteId={deck.meta.palette_id}
+            accentColor={activeAccent}
             slide={currentSlide}
             archetypes={archetypes}
             assetUrls={assetUrls}
@@ -626,12 +645,18 @@ export function App() {
               }}
             >
               <div style={{ display: "flex", flexDirection: "column" }}>
+                <div
+                  className="kicker"
+                  style={{ color: "var(--nature-crimson)", marginBottom: 10, letterSpacing: "0.08em" }}
+                >
+                  药物化学 · 科研汇报工作台
+                </div>
                 <h1
                   className="font-serif"
                   style={{
                     margin: "0 0 14px 0",
                     fontSize: "clamp(28px, 3vw, 38px)",
-                    lineHeight: 1.25,
+                    lineHeight: 1.24,
                     fontWeight: 700,
                     color: "var(--ink-primary)",
                   }}
@@ -648,17 +673,17 @@ export function App() {
                     maxWidth: 460,
                   }}
                 >
-                  导入论文或提纲，生成可编辑 PPT 与多种风格的 2D / 3D 分子结构式。
+                  导入 Word 自动提炼汇报大纲，定制多种 2D / 3D 分子结构式并一键导出可编辑 PPT。
                 </p>
 
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 28 }}>
                   <button
                     type="button"
                     className="btn-editorial-primary"
                     style={{ padding: "11px 22px", fontSize: 13.5 }}
                     onClick={() => setImportOpen(true)}
                   >
-                    新建 / 导入
+                    新建 / 导入 Word
                   </button>
                   <button
                     type="button"
@@ -669,6 +694,41 @@ export function App() {
                   >
                     {busy ? "载入中..." : "载入示例"}
                   </button>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(3, 1fr)",
+                    borderTop: "1px solid var(--rule-strong)",
+                    paddingTop: 16,
+                    gap: 16,
+                  }}
+                >
+                  <div>
+                    <div className="font-mono" style={{ fontSize: 18, fontWeight: 700, color: "var(--nature-crimson)" }}>
+                      01
+                    </div>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink-primary)", marginTop: 3 }}>
+                      Word 总结大纲
+                    </div>
+                  </div>
+                  <div style={{ borderLeft: "1px solid var(--rule-hairline)", paddingLeft: 16 }}>
+                    <div className="font-mono" style={{ fontSize: 18, fontWeight: 700, color: "var(--oxford-navy)" }}>
+                      02
+                    </div>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink-primary)", marginTop: 3 }}>
+                      2D / 3D 结构式
+                    </div>
+                  </div>
+                  <div style={{ borderLeft: "1px solid var(--rule-hairline)", paddingLeft: 16 }}>
+                    <div className="font-mono" style={{ fontSize: 18, fontWeight: 700, color: "var(--audit-sage)" }}>
+                      03
+                    </div>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink-primary)", marginTop: 3 }}>
+                      换肤导出 PPTX
+                    </div>
+                  </div>
                 </div>
               </div>
 

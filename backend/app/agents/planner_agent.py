@@ -252,9 +252,12 @@ class PlannerAgent:
         compound_list = extract_compounds_from_text(doc.raw_text)[:12]
         compound_summary = ", ".join(f"{lbl}={smi}" for lbl, smi in compound_list) if compound_list else "None detected"
 
+        from .outline_agent import load_word_outline_skill
+
+        skill_guidance = load_word_outline_skill()
         sys_p = (
-            "You are a top-tier Academic Presentation Planner & Art Director (Nature/JACS/Science standard). "
-            "Given a scientific manuscript, produce strict JSON with layout choice AND visual drawing instructions per slide:\n"
+            f"{skill_guidance}\n\n"
+            "Now map the manuscript into strict SlideSpec JSON with layout choice AND visual drawing instructions per slide:\n"
             '{"slides": [{"section_name": str, "eyebrow": str, '
             '"layout_id": "bg_top_summary_3box"|"pain_points_left_arrows"|"lit_overview_dual_card"|"mechanism_3col_flow"|"data_dashboard_table"|"fig_left_3step_chain"|"vs_center_wing"|"roadmap_layered_matrix", '
             '"title": str (<=22 chars), "takeaway": str (<=40 chars, 1 sentence), '

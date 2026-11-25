@@ -149,6 +149,53 @@ export async function fetchArchetypes(): Promise<ArchetypeInfo[]> {
   return data.archetypes;
 }
 
+export interface OutlineSlideItem {
+  section_name: string;
+  title: string;
+  takeaway: string;
+  bullets: string[];
+  kpis: Array<{ value: string; label: string }>;
+  compound_name?: string;
+  smiles?: string;
+  visual_mode: "2d" | "3d";
+  visual_style: string;
+  layout_id: string;
+}
+
+export interface WordOutlineResult {
+  title: string;
+  summary: string;
+  engine_used: string;
+  skill_name: string;
+  slide_count: number;
+  content_slide_count: number;
+  detected_compounds: Array<{ name: string; smiles: string }>;
+  table_count: number;
+  image_count: number;
+  slides: OutlineSlideItem[];
+  outline_markdown: string;
+}
+
+export async function summarizeOutlineFromFile(formData: FormData): Promise<WordOutlineResult> {
+  const res = await fetch("/api/outline/from-file", {
+    method: "POST",
+    headers: buildAiHeaders(loadAiConfig()),
+    body: formData,
+  });
+  if (!res.ok) {
+    throw new Error(extractApiError(res.status, await res.text()));
+  }
+  return res.json();
+}
+
+export async function fetchWordOutlineSkill(): Promise<{
+  name: string;
+  version: string;
+  content: string;
+}> {
+  return jsonReq("/api/skills/word-outline");
+}
+
 export async function planDeck(payload: {
   source_text: string;
   deck_title?: string;

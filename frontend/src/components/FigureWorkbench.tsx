@@ -10,6 +10,7 @@ import type {
 interface FigureWorkbenchProps {
   deckId: string;
   paletteId: string;
+  accentColor?: string;
   slide: SlideSpec;
   archetypes: ArchetypeInfo[];
   assetUrls: Record<string, AssetUrlBundle>;
@@ -33,21 +34,29 @@ interface FigureWorkbenchProps {
   onUploadReplacement: (file: File, assetId: string) => Promise<void>;
 }
 
-const CHEM_STYLES_2D = [
-  { id: "acs1996", label: "ACS 1996 经典" },
-  { id: "nature_burgundy", label: "Nature 绛红" },
-  { id: "shaded_scaffold", label: "药效团填色" },
-  { id: "jacs_terracotta", label: "JACS 砖红" },
-  { id: "reactive_spot", label: "反应位点高亮" },
-  { id: "minimal_mono", label: "极简黑线" },
+interface StyleCardOption {
+  id: string;
+  group: string;
+  label: string;
+  swatchA: string;
+  swatchB: string;
+}
+
+const CHEM_STYLES_2D: StyleCardOption[] = [
+  { id: "acs1996", group: "标准线稿", label: "杂原子着色", swatchA: "#1E293B", swatchB: "#00468B" },
+  { id: "minimal_mono", group: "标准线稿", label: "纯黑极简", swatchA: "#111827", swatchB: "#6B7280" },
+  { id: "nature_burgundy", group: "期刊单色", label: "绛红手绘", swatchA: "#7C1D35", swatchB: "#B91C1C" },
+  { id: "jacs_terracotta", group: "期刊单色", label: "砖红印刷", swatchA: "#9A3412", swatchB: "#C2410C" },
+  { id: "shaded_scaffold", group: "重点标注", label: "环骨架填色", swatchA: "#1E293B", swatchB: "#93C5FD" },
+  { id: "reactive_spot", group: "重点标注", label: "反应位点高亮", swatchA: "#1E293B", swatchB: "#2563EB" },
 ];
 
-const STYLES_3D = [
-  { id: "ball_stick", label: "球棍模型 (Ball & Stick)" },
-  { id: "stick_clean", label: "棒状模型 (Stick)" },
-  { id: "spacefill_cpk", label: "空间填充 (CPK)" },
-  { id: "pymol_neon_green", label: "PyMOL 亮绿碳" },
-  { id: "metallic_studio", label: "金属质感 (Blender)" },
+const STYLES_3D: StyleCardOption[] = [
+  { id: "ball_stick", group: "球棍建模", label: "经典灰碳", swatchA: "#687482", swatchB: "#D42430" },
+  { id: "pymol_neon_green", group: "球棍建模", label: "PyMOL 亮绿", swatchA: "#3AE048", swatchB: "#446CFF" },
+  { id: "metallic_studio", group: "球棍建模", label: "高光金属", swatchA: "#A4ACB8", swatchB: "#1E3A8A" },
+  { id: "stick_clean", group: "棒状模型", label: "纯化学键", swatchA: "#5292A6", swatchB: "#D42430" },
+  { id: "spacefill_cpk", group: "空间填充", label: "范德华球", swatchA: "#5C6068", swatchB: "#305CD4" },
 ];
 
 const VIEW_PRESETS_3D: Array<{ label: string; deg: number[] }> = [
@@ -58,6 +67,7 @@ const VIEW_PRESETS_3D: Array<{ label: string; deg: number[] }> = [
 ];
 
 export const FigureWorkbench: React.FC<FigureWorkbenchProps> = ({
+  accentColor = "var(--nature-crimson)",
   slide,
   assetUrls,
   busy,
@@ -82,7 +92,7 @@ export const FigureWorkbench: React.FC<FigureWorkbenchProps> = ({
     return (
       <aside
         style={{
-          width: 340,
+          width: 348,
           background: "var(--surface-pure)",
           borderLeft: "1px solid var(--rule-hairline)",
           padding: 24,
@@ -107,11 +117,13 @@ export const FigureWorkbench: React.FC<FigureWorkbenchProps> = ({
   const is2D = primaryAsset?.engine === "chemdraw_rdkit";
   const is3D = primaryAsset?.engine === "cylview_3d";
   const curRot = primaryAsset?.rotation_deg || [0, 0, 0];
+  const cur2DStyle = primaryAsset?.chem_style || "acs1996";
+  const cur3DStyle = primaryAsset?.style_3d || "ball_stick";
 
   return (
     <aside
       style={{
-        width: 348,
+        width: 356,
         background: "var(--surface-pure)",
         borderLeft: "1px solid var(--rule-hairline)",
         display: "flex",
@@ -125,33 +137,45 @@ export const FigureWorkbench: React.FC<FigureWorkbenchProps> = ({
         style={{
           padding: "13px 16px",
           borderBottom: "1px solid var(--rule-strong)",
+          borderTop: `2px solid ${accentColor}`,
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
         }}
       >
-        <div className="font-serif" style={{ fontWeight: 700, fontSize: 15.5, color: "var(--ink-primary)" }}>
-          结构式
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: 99,
+              background: accentColor,
+              display: "inline-block",
+            }}
+          />
+          <span className="font-serif" style={{ fontWeight: 700, fontSize: 15.5, color: "var(--ink-primary)" }}>
+            分子结构工作台
+          </span>
         </div>
         <button
           type="button"
           className="btn-editorial-primary"
           disabled={busy}
           onClick={onRegenerate}
-          style={{ padding: "6px 12px", fontSize: 12 }}
+          style={{ padding: "5px 12px", fontSize: 12, background: accentColor, borderColor: accentColor }}
         >
           重绘
         </button>
       </div>
 
-      <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ padding: 15, display: "flex", flexDirection: "column", gap: 14 }}>
         {/* Transparent Figure Preview */}
         <div>
           <div
             className="alpha-checkerboard"
             style={{
               width: "100%",
-              height: 184,
+              height: 176,
               borderRadius: 2,
               border: "1px solid #D6D2C8",
               display: "flex",
@@ -162,7 +186,12 @@ export const FigureWorkbench: React.FC<FigureWorkbenchProps> = ({
             }}
           >
             {activeUrl ? (
-              <img key={activeUrl} src={activeUrl} alt="Structure preview" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+              <img
+                key={activeUrl}
+                src={activeUrl}
+                alt="Structure preview"
+                style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
+              />
             ) : (
               <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>暂无预览</span>
             )}
@@ -190,7 +219,17 @@ export const FigureWorkbench: React.FC<FigureWorkbenchProps> = ({
         </div>
 
         {/* 2D / 3D Switch */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            padding: 3,
+            background: "var(--paper-bg)",
+            border: "1px solid #D6D2C8",
+            borderRadius: 3,
+            gap: 3,
+          }}
+        >
           <button
             type="button"
             disabled={busy}
@@ -201,17 +240,17 @@ export const FigureWorkbench: React.FC<FigureWorkbenchProps> = ({
               })
             }
             style={{
-              padding: "8px 10px",
+              padding: "7px 8px",
               fontSize: 12.5,
               fontWeight: 700,
               borderRadius: 2,
               cursor: "pointer",
-              border: "1px solid var(--nature-crimson)",
-              background: is2D ? "var(--nature-crimson)" : "#FFFFFF",
-              color: is2D ? "#FFFFFF" : "var(--nature-crimson)",
+              border: "none",
+              background: is2D ? accentColor : "transparent",
+              color: is2D ? "#FFFFFF" : "var(--ink-secondary)",
             }}
           >
-            2D 结构式
+            2D ChemDraw
           </button>
           <button
             type="button"
@@ -223,22 +262,22 @@ export const FigureWorkbench: React.FC<FigureWorkbenchProps> = ({
               })
             }
             style={{
-              padding: "8px 10px",
+              padding: "7px 8px",
               fontSize: 12.5,
               fontWeight: 700,
               borderRadius: 2,
               cursor: "pointer",
-              border: "1px solid var(--oxford-navy)",
-              background: is3D ? "var(--oxford-navy)" : "#FFFFFF",
-              color: is3D ? "#FFFFFF" : "var(--oxford-navy)",
+              border: "none",
+              background: is3D ? accentColor : "transparent",
+              color: is3D ? "#FFFFFF" : "var(--ink-secondary)",
             }}
           >
-            3D 结构式
+            3D 建模构象
           </button>
         </div>
 
         {/* Molecule Input */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
           <span style={{ fontSize: 12, color: "var(--ink-secondary)", fontWeight: 600 }}>药名或 SMILES</span>
           <div style={{ display: "flex", gap: 6 }}>
             <input
@@ -266,41 +305,58 @@ export const FigureWorkbench: React.FC<FigureWorkbenchProps> = ({
           </div>
         </div>
 
-        {/* 2D Styles */}
+        {/* 2D Visual Swatch Grid */}
         {primaryAsset && is2D && (
-          <div
-            style={{
-              padding: 12,
-              borderRadius: 2,
-              background: "var(--paper-bg)",
-              border: "1px solid var(--rule-hairline)",
-              display: "flex",
-              flexDirection: "column",
-              gap: 10,
-            }}
-          >
-            <label style={{ fontSize: 12 }}>
-              <span style={{ color: "var(--ink-secondary)", fontWeight: 600 }}>2D 风格</span>
-              <select
-                className="editorial-select"
-                value={primaryAsset.chem_style || "acs1996"}
-                disabled={busy}
-                onChange={(e) =>
-                  onRefineOrSwitch({
-                    asset_id: primaryAsset.asset_id,
-                    chem_style_override: e.target.value,
-                  })
-                }
-                style={{ marginTop: 4 }}
-              >
-                {CHEM_STYLES_2D.map((cs) => (
-                  <option key={cs.id} value={cs.id}>
-                    {cs.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label style={{ fontSize: 12 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ fontSize: 12, color: "var(--ink-secondary)", fontWeight: 600 }}>2D 绘制风格</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+              {CHEM_STYLES_2D.map((cs) => {
+                const selected = cur2DStyle === cs.id;
+                return (
+                  <button
+                    key={cs.id}
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      onRefineOrSwitch({
+                        asset_id: primaryAsset.asset_id,
+                        chem_style_override: cs.id,
+                      })
+                    }
+                    style={{
+                      textAlign: "left",
+                      padding: "7px 9px",
+                      borderRadius: 2,
+                      cursor: "pointer",
+                      border: selected ? `1.5px solid ${accentColor}` : "1px solid #DCD8CF",
+                      background: selected ? "var(--paper-bg)" : "#FFFFFF",
+                      boxShadow: selected ? "0 2px 8px rgba(0,0,0,0.06)" : "none",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 14,
+                        height: 24,
+                        borderRadius: 2,
+                        background: `linear-gradient(135deg, ${cs.swatchA} 50%, ${cs.swatchB} 50%)`,
+                        flexShrink: 0,
+                        border: "1px solid rgba(0,0,0,0.08)",
+                      }}
+                    />
+                    <span style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 10.5, color: "var(--ink-muted)", lineHeight: 1.1 }}>{cs.group}</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: selected ? accentColor : "var(--ink-primary)", marginTop: 2 }}>
+                        {cs.label}
+                      </div>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <label style={{ fontSize: 12, paddingTop: 2 }}>
               <div style={{ display: "flex", justifyContent: "space-between", color: "var(--ink-secondary)", fontWeight: 600 }}>
                 <span>键长</span>
                 <span className="font-mono">{bondLen} px</span>
@@ -317,46 +373,63 @@ export const FigureWorkbench: React.FC<FigureWorkbenchProps> = ({
                     fixed_bond_length_px: bondLen,
                   })
                 }
-                style={{ width: "100%", marginTop: 4, accentColor: "var(--nature-crimson)" }}
+                style={{ width: "100%", marginTop: 4, accentColor }}
               />
             </label>
           </div>
         )}
 
-        {/* 3D Styles */}
+        {/* 3D Visual Swatch Grid */}
         {primaryAsset && is3D && (
-          <div
-            style={{
-              padding: 12,
-              borderRadius: 2,
-              background: "var(--paper-bg)",
-              border: "1px solid var(--rule-hairline)",
-              display: "flex",
-              flexDirection: "column",
-              gap: 10,
-            }}
-          >
-            <label style={{ fontSize: 12 }}>
-              <span style={{ color: "var(--ink-secondary)", fontWeight: 600 }}>3D 风格</span>
-              <select
-                className="editorial-select"
-                value={primaryAsset.style_3d || "ball_stick"}
-                disabled={busy}
-                onChange={(e) =>
-                  onRefineOrSwitch({
-                    asset_id: primaryAsset.asset_id,
-                    style_3d_override: e.target.value,
-                  })
-                }
-                style={{ marginTop: 4 }}
-              >
-                {STYLES_3D.map((st) => (
-                  <option key={st.id} value={st.id}>
-                    {st.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ fontSize: 12, color: "var(--ink-secondary)", fontWeight: 600 }}>3D 建模风格</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+              {STYLES_3D.map((st) => {
+                const selected = cur3DStyle === st.id;
+                return (
+                  <button
+                    key={st.id}
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      onRefineOrSwitch({
+                        asset_id: primaryAsset.asset_id,
+                        style_3d_override: st.id,
+                      })
+                    }
+                    style={{
+                      textAlign: "left",
+                      padding: "7px 9px",
+                      borderRadius: 2,
+                      cursor: "pointer",
+                      border: selected ? `1.5px solid ${accentColor}` : "1px solid #DCD8CF",
+                      background: selected ? "var(--paper-bg)" : "#FFFFFF",
+                      boxShadow: selected ? "0 2px 8px rgba(0,0,0,0.06)" : "none",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 14,
+                        height: 24,
+                        borderRadius: 99,
+                        background: `radial-gradient(circle at 35% 30%, #FFFFFF 0%, ${st.swatchA} 45%, ${st.swatchB} 100%)`,
+                        flexShrink: 0,
+                        border: "1px solid rgba(0,0,0,0.08)",
+                      }}
+                    />
+                    <span style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 10.5, color: "var(--ink-muted)", lineHeight: 1.1 }}>{st.group}</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: selected ? accentColor : "var(--ink-primary)", marginTop: 2 }}>
+                        {st.label}
+                      </div>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
 
             <div>
               <div style={{ fontSize: 12, color: "var(--ink-secondary)", fontWeight: 600, marginBottom: 5 }}>视角</div>
@@ -380,8 +453,8 @@ export const FigureWorkbench: React.FC<FigureWorkbenchProps> = ({
                         fontWeight: 600,
                         borderRadius: 2,
                         cursor: "pointer",
-                        border: active ? "1px solid var(--oxford-navy)" : "1px solid #D6D2C8",
-                        background: active ? "var(--oxford-navy)" : "#FFFFFF",
+                        border: active ? `1px solid ${accentColor}` : "1px solid #D6D2C8",
+                        background: active ? accentColor : "#FFFFFF",
                         color: active ? "#FFFFFF" : "var(--ink-secondary)",
                       }}
                     >
@@ -403,7 +476,7 @@ export const FigureWorkbench: React.FC<FigureWorkbenchProps> = ({
                     show_nonpolar_h_override: e.target.checked,
                   })
                 }
-                style={{ accentColor: "var(--oxford-navy)" }}
+                style={{ accentColor }}
               />
               <span>显示全部氢原子</span>
             </label>
@@ -412,7 +485,7 @@ export const FigureWorkbench: React.FC<FigureWorkbenchProps> = ({
 
         {/* Custom Upload */}
         {primaryAsset && (
-          <div style={{ paddingTop: 4, borderTop: "1px solid #ECEAE3" }}>
+          <div style={{ paddingTop: 6, borderTop: "1px solid #ECEAE3" }}>
             <button
               type="button"
               disabled={busy}

@@ -1,4 +1,6 @@
 import React, { useRef, useState } from "react";
+import { fetchWordOutlineSkill, summarizeOutlineFromFile } from "../api/client";
+import type { WordOutlineResult } from "../api/client";
 import { COVER_TEMPLATE_OPTIONS } from "../types/deckSpec";
 import type { CoverTemplateId, DesignStyle, PaletteInfo, ScenarioType } from "../types/deckSpec";
 
@@ -109,7 +111,16 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   const [coverTemplate, setCoverTemplate] = useState<CoverTemplateId>("hero_band_bottom_bar");
   const [isProposal, setIsProposal] = useState<boolean>(false);
   const [sourceText, setSourceText] = useState<string>(SAMPLE_OUTLINE);
-  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  const [outlining, setOutlining] = useState(false);
+  const [outlineData, setOutlineData] = useState<WordOutlineResult | null>(null);
+  const [outlineView, setOutlineView] = useState<"cards" | "raw">("cards");
+  const [skillOpen, setSkillOpen] = useState(false);
+  const [skillContent, setSkillContent] = useState<string>("");
+  const [outlineErr, setOutlineErr] = useState<string | null>(null);
+
+  const outlineFileRef = useRef<HTMLInputElement | null>(null);
+  const directFileRef = useRef<HTMLInputElement | null>(null);
 
   if (!open) return null;
 
@@ -135,8 +146,33 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     });
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleOutlineFromFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setOutlining(true);
+    setOutlineErr(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("target_slide_count", String(slideCount));
+      fd.append("scenario", scenario);
+      fd.append("is_proposal", String(isProposal));
+      const res = await summarizeOutlineFromFile(fd);
+      setOutlineData(res);
+      setDeckTitle(res.title || deckTitle);
+      setSourceText(res.outline_markdown || sourceText);
+      setOutlineView("cards");
+    } catch (err) {
+      setOutlineErr(String(err));
+    } finally {
+      setOutlining(false);
+    }
+  };
+
+  const handleDirectFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
     if (!file) return;
     const fd = new FormData();
     fd.append("file", file);
@@ -152,6 +188,18 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     fd.append("design_style", designStyle);
     fd.append("cover_template", coverTemplate);
     await onPlanFile(fd);
+  };
+
+  const toggleSkillPreview = async () => {
+    if (!skillOpen && !skillContent) {
+      try {
+        const res = await fetchWordOutlineSkill();
+        setSkillContent(res.content);
+      } catch (err) {
+        setOutlineErr(String(err));
+      }
+    }
+    setSkillOpen((v) => !v);
   };
 
   return (
@@ -172,13 +220,13 @@ export const ImportModal: React.FC<ImportModalProps> = ({
         className="editorial-fade-in"
         style={{
           width: "100%",
-          maxWidth: 820,
+          maxWidth: 860,
           maxHeight: "92vh",
           overflowY: "auto",
           background: "var(--surface-pure)",
           borderRadius: 2,
           border: "1px solid #D6D2C8",
-          borderTop: "3px solid var(--nature-crimson)",
+          borderTop: `3px solid ${previewPrimary}`,
           boxShadow: "0 24px 60px rgba(23, 23, 23, 0.22)",
         }}
       >
@@ -193,7 +241,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
           }}
         >
           <div className="font-serif" style={{ fontSize: 18, fontWeight: 700, color: "var(--ink-primary)" }}>
-            新建 / 导入
+            导入 Word / 规划大纲
           </div>
           <button
             type="button"
@@ -253,7 +301,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
             <label style={{ fontSize: 12 }}>
               <div style={{ fontWeight: 600, marginBottom: 5, color: "var(--ink-secondary)", display: "flex", justifyContent: "space-between" }}>
                 <span>页数</span>
-                <span className="font-mono" style={{ color: "var(--nature-crimson)", fontWeight: 700 }}>{slideCount}</span>
+                <span className="font-mono" style={{ color: previewPrimary, fontWeight: 700 }}>{slideCount}</span>
               </div>
               <input
                 type="range"
@@ -261,7 +309,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                 max={30}
                 value={slideCount}
                 onChange={(e) => setSlideCount(Number(e.target.value))}
-                style={{ width: "100%", accentColor: "var(--nature-crimson)" }}
+                style={{ width: "100%", accentColor: previewPrimary }}
               />
             </label>
 
@@ -309,13 +357,13 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                       textAlign: "left",
                       padding: 6,
                       background: selected ? "#FDF8F8" : "var(--surface-pure)",
-                      border: selected ? "1.5px solid var(--nature-crimson)" : "1px solid var(--rule-hairline)",
+                      border: selected ? `1.5px solid ${previewPrimary}` : "1px solid var(--rule-hairline)",
                       borderRadius: 2,
                       cursor: "pointer",
                     }}
                   >
                     <CoverMiniPreview id={tpl.id} color={previewPrimary} tint={previewTint} />
-                    <div style={{ fontSize: 11, fontWeight: 700, color: selected ? "var(--nature-crimson)" : "var(--ink-primary)", marginTop: 4 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: selected ? previewPrimary : "var(--ink-primary)", marginTop: 4 }}>
                       {tpl.name}
                     </div>
                   </button>
@@ -324,45 +372,176 @@ export const ImportModal: React.FC<ImportModalProps> = ({
             </div>
           </div>
 
-          <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-secondary)" }}>正文 / 提纲（可写药名或 SMILES）</span>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {/* Skill-Driven Word -> Outline Bar */}
+          <div
+            style={{
+              padding: 12,
+              background: "var(--paper-bg)",
+              border: "1px solid var(--rule-hairline)",
+              borderRadius: 2,
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink-primary)" }}>PPT 大纲与内容</span>
                 <label style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, color: "var(--ink-secondary)", cursor: "pointer" }}>
                   <input
                     type="checkbox"
                     checked={isProposal}
                     onChange={(e) => setIsProposal(e.target.checked)}
-                    style={{ accentColor: "var(--nature-crimson)" }}
+                    style={{ accentColor: previewPrimary }}
                   />
                   <span>开题报告</span>
                 </label>
+              </div>
+
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 <button
                   type="button"
                   className="btn-editorial-ghost"
-                  onClick={() => fileRef.current?.click()}
-                  style={{ padding: "4px 10px", fontSize: 11.5, borderColor: "var(--oxford-navy)", color: "var(--oxford-navy)" }}
+                  onClick={toggleSkillPreview}
+                  style={{ padding: "4px 9px", fontSize: 11.5 }}
                 >
-                  上传 Word / PDF
+                  {skillOpen ? "收起 Skill 规则" : "大纲 Skill 规则"}
                 </button>
-                <input ref={fileRef} type="file" accept=".docx,.pdf,.txt,.md" hidden onChange={handleFileChange} />
+                <button
+                  type="button"
+                  className="btn-editorial-navy"
+                  disabled={outlining || loading}
+                  onClick={() => outlineFileRef.current?.click()}
+                  style={{ padding: "5px 11px", fontSize: 11.5 }}
+                >
+                  {outlining ? "正在总结大纲..." : "上传 Word 总结大纲"}
+                </button>
+                <button
+                  type="button"
+                  className="btn-editorial-ghost"
+                  disabled={outlining || loading}
+                  onClick={() => directFileRef.current?.click()}
+                  style={{ padding: "4px 10px", fontSize: 11.5, borderColor: previewPrimary, color: previewPrimary }}
+                >
+                  直接导入 Word 生成
+                </button>
+                <input ref={outlineFileRef} type="file" accept=".docx,.pdf,.txt,.md" hidden onChange={handleOutlineFromFile} />
+                <input ref={directFileRef} type="file" accept=".docx,.pdf,.txt,.md" hidden onChange={handleDirectFileUpload} />
               </div>
             </div>
-            <textarea
-              rows={6}
-              className="editorial-textarea"
-              value={sourceText}
-              onChange={(e) => setSourceText(e.target.value)}
-              style={{ lineHeight: 1.55 }}
-            />
+
+            {outlineErr && (
+              <div style={{ fontSize: 12, color: "var(--nature-crimson)", background: "#FDF2F2", padding: "6px 10px", border: "1px solid #E5B4B4" }}>
+                {outlineErr}
+              </div>
+            )}
+
+            {skillOpen && (
+              <pre
+                className="font-mono"
+                style={{
+                  margin: 0,
+                  maxHeight: 160,
+                  overflowY: "auto",
+                  padding: 10,
+                  fontSize: 11,
+                  lineHeight: 1.5,
+                  background: "#FFFFFF",
+                  border: "1px solid #DCD8CF",
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {skillContent || "正在加载..."}
+              </pre>
+            )}
+
+            {outlineData && (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11.5, color: "var(--ink-secondary)" }}>
+                <span>
+                  已总结 <strong>{outlineData.content_slide_count}</strong> 页内容 · 分子 {outlineData.detected_compounds.length} 个 · 表格 {outlineData.table_count} 张 · 引擎{" "}
+                  <span className="font-mono" style={{ color: previewPrimary }}>{outlineData.engine_used}</span>
+                </span>
+                <div style={{ display: "inline-flex", border: "1px solid #D5D1C8", borderRadius: 2, overflow: "hidden" }}>
+                  <button
+                    type="button"
+                    onClick={() => setOutlineView("cards")}
+                    style={{
+                      fontSize: 11,
+                      padding: "2px 8px",
+                      border: "none",
+                      cursor: "pointer",
+                      background: outlineView === "cards" ? "var(--ink-primary)" : "#FFFFFF",
+                      color: outlineView === "cards" ? "#FFFFFF" : "var(--ink-secondary)",
+                    }}
+                  >
+                    大纲卡片
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOutlineView("raw")}
+                    style={{
+                      fontSize: 11,
+                      padding: "2px 8px",
+                      border: "none",
+                      borderLeft: "1px solid #D5D1C8",
+                      cursor: "pointer",
+                      background: outlineView === "raw" ? "var(--ink-primary)" : "#FFFFFF",
+                      color: outlineView === "raw" ? "#FFFFFF" : "var(--ink-secondary)",
+                    }}
+                  >
+                    编辑文本
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {outlineData && outlineView === "cards" ? (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, maxHeight: 220, overflowY: "auto" }}>
+                {outlineData.slides.map((sl, i) => (
+                  <div
+                    key={`${sl.title}_${i}`}
+                    style={{
+                      padding: "9px 11px",
+                      background: "#FFFFFF",
+                      border: "1px solid #DCD8CF",
+                      borderLeft: `3px solid ${previewPrimary}`,
+                      borderRadius: 2,
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                      <span className="font-mono" style={{ fontSize: 10.5, fontWeight: 700, color: previewPrimary }}>
+                        {String(i + 1).padStart(2, "0")} · {sl.visual_mode.toUpperCase()} ({sl.visual_style})
+                      </span>
+                      {sl.compound_name && (
+                        <span className="font-mono" style={{ fontSize: 10, color: "var(--ink-muted)" }}>
+                          {sl.compound_name}
+                        </span>
+                      )}
+                    </div>
+                    <div className="font-serif" style={{ fontSize: 13, fontWeight: 700, color: "var(--ink-primary)", marginBottom: 3 }}>
+                      {sl.title}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: "var(--ink-secondary)", lineHeight: 1.4 }}>{sl.takeaway}</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <textarea
+                rows={6}
+                className="editorial-textarea"
+                value={sourceText}
+                onChange={(e) => setSourceText(e.target.value)}
+                style={{ lineHeight: 1.55 }}
+              />
+            )}
           </div>
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, paddingTop: 4, borderTop: "1px solid var(--rule-hairline)" }}>
             <button type="button" className="btn-editorial-ghost" onClick={onClose}>
               取消
             </button>
-            <button type="submit" className="btn-editorial-primary" disabled={loading}>
-              {loading ? "生成中..." : "开始生成"}
+            <button type="submit" className="btn-editorial-primary" disabled={loading || outlining} style={{ background: previewPrimary, borderColor: previewPrimary }}>
+              {loading ? "生成中..." : "生成 PPT"}
             </button>
           </div>
         </form>
