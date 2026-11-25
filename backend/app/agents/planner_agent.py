@@ -117,8 +117,9 @@ def _build_deterministic_slide_fields(
 
     # 2. KPIs strictly from extracted numbers in this section (never fabricate)
     kpis: List[KpiItem] = []
-    for idx, (val, lbl) in enumerate(metrics[:2]):
-        kpis.append(KpiItem(value=val, label=lbl, color_token="s1" if idx == 0 else "alert"))
+    kpi_tokens = ("s1", "s2", "alert")
+    for idx, (val, lbl) in enumerate(metrics[:3]):
+        kpis.append(KpiItem(value=val, label=lbl, color_token=kpi_tokens[idx % len(kpi_tokens)]))
 
     # 3. Insights strictly from real sentences of this section
     insights: List[InsightItem] = []
@@ -278,7 +279,7 @@ class PlannerAgent:
             '{"slides": [{"section_name": str, "eyebrow": str, '
             f'"layout_id": {layout_enum_str}, '
             '"title": str (<=22 chars), "takeaway": str (<=40 chars, 1 sentence), '
-            '"kpis": [{"value": str, "label": str}], '
+            '"kpis": [{"value": str, "label": str, "color_token": "s1"|"s2"|"s3"|"alert"}], '
             '"insights": [{"index": "01", "heading": str, "body": str (<=30 chars), "highlight": str (2-10 chars)}], '
             '"visual_plan": {"mode": "chemdraw_2d"|"pymol_3d"|"origin_real_data"|"mechanism_3d_pathway"|"blender_3d_ai"|"vector_mech", '
             '"compound_name": str, "smiles": str, "chem_style": "nature_burgundy"|"shaded_scaffold"|"jacs_terracotta"|"reactive_spot"|"minimal_mono"|"acs1996", '

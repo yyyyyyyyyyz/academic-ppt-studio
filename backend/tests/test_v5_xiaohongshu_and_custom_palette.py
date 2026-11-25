@@ -169,3 +169,77 @@ def test_word_outline_skill_lists_all_v5_layouts() -> None:
     assert len(V5_LAYOUT_IDS) == 13
     for lid in V5_LAYOUT_IDS:
         assert lid.value in skill_text, f"Layout {lid.value} missing from word_to_outline_skill.md"
+    for role_tok in ("s1", "s2", "s3", "alert"):
+        assert role_tok in skill_text, f"Multi-color role {role_tok} missing from word_to_outline_skill.md"
+
+
+def test_palette_slide_roles_multicolor_and_legible() -> None:
+    for pid in list(PALETTES.keys()) + ["custom_1B6B52"]:
+        pal = get_palette(pid)
+        roles = pal.slide_roles()
+        assert len(roles["accents"]) == 4
+        assert len(roles["tints"]) == 4
+        assert len(roles["borders"]) == 4
+        assert len({c.upper() for c in roles["accents"]}) == 4, f"Duplicate accents in {pid}: {roles['accents']}"
+        assert roles["alert"].startswith("#")
+        for acc in roles["accents"]:
+            r, g, b = (int(acc[i : i + 2], 16) / 255.0 for i in (1, 3, 5))
+            luma = 0.2126 * r + 0.7152 * g + 0.0722 * b
+            assert luma <= 0.59, f"Accent {acc} in {pid} too bright for white badge text (luma={luma:.3f})"
+
+
+def test_cylview3d_pbr_quality_and_pptx_picture_embed(tmp_path: Path) -> None:
+    from pptx import Presentation
+    from pptx.enum.shapes import MSO_SHAPE_TYPE
+    from app.figure_factory.alpha_matting import compute_alpha_edge_cleanliness
+    from app.figure_factory.cylview3d_engine import render_cylview3d
+    from app.schemas.deck_spec import ArchetypeId, EngineType, FigureAsset, FigureSpec
+
+    fig_dir = tmp_path / "figs_3d"
+    fig_dir.mkdir(parents=True, exist_ok=True)
+    res3d = render_cylview3d("Osimertinib", fig_dir / "osimertinib_3d.png", palette_id="lancet", style_3d="ball_stick")
+    assert res3d.atom_count > 50  # Explicit hydrogens enabled for small/medium drug molecules
+    assert compute_alpha_edge_cleanliness(res3d.png_path) >= 8.5
+
+    factory = ScientificFigureFactory()
+    fig_spec = factory.render_figure_spec(
+        FigureSpec(
+            figure_id="fig_3d_pbr",
+            archetype=ArchetypeId.A04,
+            assets=[
+                FigureAsset(
+                    asset_id="osimertinib_3d",
+                    engine=EngineType.cylview_3d,
+                    smiles="Osimertinib",
+                    style_3d="ball_stick",
+                    label="3D Conformer (Osimertinib)",
+                )
+            ],
+        ),
+        output_dir=fig_dir / "factory",
+        palette_id="lancet",
+    )
+    sl = SlideSpec(
+        slide_no=1,
+        slide_type=SlideType.content,
+        layout_id=LayoutId.dual_compare_cards,
+        section_name="结构对比",
+        title="三维 PBR 嵌入验证",
+        takeaway="自动将高清 3D PBR 渲染图嵌入 PPTX 幻灯片。",
+        kpis=[KpiItem(value="1.4 nM", label="IC50", color_token="s1")],
+        insights=[
+            InsightItem(index="01", heading="立体构象", body="芳香双键与球棍高光清晰。", highlight="PBR"),
+            InsightItem(index="02", heading="多色协同", body="s1/s2/s3/alert 分色呈现。", highlight="多色"),
+        ],
+        figure_spec=fig_spec,
+    )
+    deck = DeckSpec(
+        meta=DeckMeta(deck_id="test_3d_embed", deck_title="3D PBR Test", palette_id="lancet", target_slide_count=3),
+        slides=[sl],
+    )
+    pptx_path = compile_deck_to_pptx(deck, tmp_path / "embed_3d.pptx")
+    prs = Presentation(str(pptx_path))
+    pics = [shp for shp in prs.slides[0].shapes if shp.shape_type == MSO_SHAPE_TYPE.PICTURE]
+    assert len(pics) >= 1, "Expected 3D PBR PNG to be embedded as Picture in PPTX"
+    report = audit_pptx(pptx_path, deck)
+    assert report.passed, f"Audit failed: {[v.model_dump() for v in report.violations]}"

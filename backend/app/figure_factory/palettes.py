@@ -6,10 +6,34 @@ All HEX codes match Spec Section 4.2 verbatim, with unified global semantic toke
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
+
+def _hex_luma(hex_color: str) -> float:
+    r, g, b = hex_to_rgb(hex_color)
+    return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0
+
+
+def _ensure_legible_accent(hex_color: str, max_luma: float = 0.56) -> str:
+    """Darken overly bright colors just enough to stay legible behind white text and on white slides."""
+    out = hex_color
+    for _ in range(3):
+        lum = _hex_luma(out)
+        if lum <= max_luma:
+            return out
+        factor = min(0.55, max(0.16, (lum - max_luma) / max(lum, 1e-4) + 0.14))
+        out = darken_hex(out, factor)
+    return out
+
+
+def _rgb_dist(hex_a: str, hex_b: str) -> float:
+    r1, g1, b1 = hex_to_rgb(hex_a)
+    r2, g2, b2 = hex_to_rgb(hex_b)
+    return math.sqrt((r1 - r2) ** 2 + (g1 - g2) ** 2 + (b1 - b2) ** 2)
 
 
 @dataclass(frozen=True)
@@ -66,6 +90,50 @@ class ScientificPalette:
                 "alert": self.alert,
             },
             "material_prompt_terms": self.material_prompt_terms,
+        }
+
+    def slide_roles(self) -> Dict[str, Any]:
+        """Return contrast-safe multi-color semantic accents (c1..c4, alert, tints, borders) for all layouts."""
+        c1 = _ensure_legible_accent(self.s1, max_luma=0.58)
+        alert_c = _ensure_legible_accent(self.alert, max_luma=0.56)
+
+        picked: List[str] = [c1]
+        candidates = [self.s2, self.s3, self.s4, *self.series, self.alert]
+        for raw_c in candidates:
+            if not raw_c or _hex_luma(raw_c) > 0.88:
+                continue
+            cand = _ensure_legible_accent(raw_c, max_luma=0.58)
+            if all(_rgb_dist(cand, ex) >= 42.0 for ex in picked):
+                picked.append(cand)
+            if len(picked) >= 4:
+                break
+
+        fallbacks = [
+            _ensure_legible_accent(self.s2, max_luma=0.56),
+            alert_c,
+            _ensure_legible_accent(self.s3, max_luma=0.56),
+            darken_hex(c1, 0.24),
+        ]
+        for fb in fallbacks:
+            if len(picked) >= 4:
+                break
+            if fb not in picked:
+                picked.append(fb)
+        while len(picked) < 4:
+            picked.append(c1)
+
+        accents = picked[:4]
+        return {
+            "c1": accents[0],
+            "c2": accents[1],
+            "c3": accents[2],
+            "c4": accents[3],
+            "alert": alert_c,
+            "accents": accents,
+            "tints": [blend_with_white(c, 0.90) for c in accents],
+            "borders": [blend_with_white(c, 0.58) for c in accents],
+            "alert_tint": blend_with_white(alert_c, 0.91),
+            "alert_border": blend_with_white(alert_c, 0.55),
         }
 
 

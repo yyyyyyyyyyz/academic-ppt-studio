@@ -355,7 +355,7 @@ class ArtDirectorAgent:
                 )
             if not slide.strategy_cards:
                 slide.strategy_cards = [
-                    {"badge": "要点解析", "badge_color": "s1" if idx == 0 else "s2", "title": ins.heading, "body": ins.body}
+                    {"badge": "要点解析", "badge_color": "s2" if idx == 0 else "s3", "title": ins.heading, "body": ins.body}
                     for idx, ins in enumerate(slide.insights[:2])
                 ]
         elif slide.layout_id in (LayoutId.bg_top_summary_3box, LayoutId.fig_left_3step_chain, LayoutId.tri_column_showcase):

@@ -201,22 +201,34 @@ def _render_figure_layer(
         a_top = box.top + nb[1] * box.height
         a_w = nb[2] * box.width
         a_h = nb[3] * box.height
+        fig_h = (a_h - 0.36) if (asset.label and (nb[1] + nb[3] > 0.90) and a_h > 1.0) else a_h
 
         if asset.engine == EngineType.origin_plot:
             add_native_origin_chart(
-                slide, asset, a_left, a_top, a_w, a_h, pal,
+                slide, asset, a_left, a_top, a_w, fig_h, pal,
                 latin_font=latin_font, ea_font=ea_font,
             )
         elif asset.engine == EngineType.chemdraw_rdkit:
             add_native_chemdraw_group(
-                slide, asset, a_left, a_top, a_w, a_h, pal,
+                slide, asset, a_left, a_top, a_w, fig_h, pal,
                 latin_font=latin_font, ea_font=ea_font, scale_in_per_unit=shared_mol_scale,
             )
         elif asset.engine == EngineType.cylview_3d:
-            add_native_cylview3d_group(slide, asset, a_left, a_top, a_w, a_h, pal)
+            if asset.png_path and Path(asset.png_path).is_file():
+                _add_picture_fit(
+                    slide,
+                    Path(asset.png_path),
+                    left_in=a_left,
+                    top_in=a_top,
+                    width_in=a_w,
+                    height_in=fig_h,
+                    name=f"L1_{asset.asset_id}",
+                )
+            else:
+                add_native_cylview3d_group(slide, asset, a_left, a_top, a_w, fig_h, pal)
         elif asset.engine == EngineType.vector_mech:
             add_native_vector_mech_group(
-                slide, asset, a_left, a_top, a_w, a_h, pal,
+                slide, asset, a_left, a_top, a_w, fig_h, pal,
                 latin_font=latin_font, ea_font=ea_font,
             )
         else:
@@ -231,7 +243,7 @@ def _render_figure_layer(
                 left_in=a_left,
                 top_in=a_top,
                 width_in=a_w,
-                height_in=a_h,
+                height_in=fig_h,
                 name=f"L1_{asset.asset_id}",
             )
 
