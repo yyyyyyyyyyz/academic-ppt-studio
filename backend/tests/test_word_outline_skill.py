@@ -153,3 +153,56 @@ def test_outline_from_docx_local_and_llm_mock(tmp_path: Path, monkeypatch) -> No
     assert d_llm["slides"][0]["smiles"] != ""
     assert d_llm["slides"][1]["visual_mode"] == "3d"
     assert "Osimertinib 诱发 C797S 耐药" in d_llm["outline_markdown"]
+
+
+def test_full_5_stage_deck_with_dividers_and_native_editable_pptx(tmp_path: Path, monkeypatch) -> None:
+    from PIL import Image
+    from io import BytesIO
+
+    test_settings = Settings(
+        artifacts_root=tmp_path / "artifacts",
+        decks_root=tmp_path / "artifacts" / "decks",
+        gallery_root=tmp_path / "artifacts" / "archetype_gallery",
+        demo_deck_root=tmp_path / "artifacts" / "demo_deck",
+        llm_provider_mode="local",
+        figure_provider_mode="local",
+    )
+    monkeypatch.setattr(main_mod, "settings", test_settings)
+    client = TestClient(main_mod.app)
+
+    plan_resp = client.post(
+        "/api/plan",
+        json={
+            "source_text": (
+                "# 非共价 EGFR 变构抑制剂设计与构效关系\n"
+                "## 1. 背景痛点\nOsimertinib 产生 C797S 耐药突变。\n"
+                "## 2. 骨架优化\n引入吗啉尾链提升选择性 145 倍。SMILES: COc1cc2ncnc(Nc3ccc(F)c(Cl)c3)c2cc1OCCCN4CCOCC4\n"
+                "## 3. 3D 结合模式\nMet793 双齿氢键稳定结合。\n"
+                "## 4. 定量评价\nYJ-402 IC50 = 1.8 nM，口服生物利用度 F = 64.5%。\n"
+                "## 5. 总结展望\n推进 hERG 安全筛查。"
+            ),
+            "target_slide_count": 10,
+            "palette_id": "lancet",
+            "scenario": "defense",
+            "is_proposal": False,
+            "include_dividers": True,
+        },
+    )
+    assert plan_resp.status_code == 200, plan_resp.text
+    pdata = plan_resp.json()
+    deck = pdata["deck_spec"]
+    slide_types = [s["slide_type"] for s in deck["slides"]]
+    for required_t in ("cover", "toc", "part_divider", "content", "closing"):
+        assert required_t in slide_types, f"Missing {required_t} in {slide_types}"
+
+    # Verify Full HD 1920x1080 preview resolution
+    p_bytes = client.get(pdata["artifact_urls"]["slide_01"]).content
+    with Image.open(BytesIO(p_bytes)) as im:
+        assert im.size == (1920, 1080)
+
+    # Verify 100% natively editable PPTX export passes visual/structural audit across all upgraded layouts
+    build_resp = client.post("/api/build/pptx", json={"deck_spec": deck, "run_qa_loop": True})
+    assert build_resp.status_code == 200
+    audit = build_resp.json()["audit_report"]
+    assert audit["passed"] is True, f"Audit failed: {audit}"
+    assert audit["filled_body_boxes"] == 0

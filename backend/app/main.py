@@ -494,6 +494,7 @@ def _run_plan(
             advisor=req.advisor,
             date_str=req.date_str,
             parsed_doc=parsed_doc,
+            include_dividers=req.include_dividers,
         )
 
         factory = ScientificFigureFactory(settings=req_settings, provider=provider)
@@ -550,6 +551,7 @@ async def api_plan_upload(
     is_proposal: bool = Form(default=False),
     design_style: DesignStyle = Form(default=DesignStyle.defense_modular),
     cover_template: CoverTemplateId = Form(default=CoverTemplateId.hero_band_bottom_bar),
+    include_dividers: Optional[bool] = Form(default=None),
 ) -> Dict[str, object]:
     deck_id = f"deck_{uuid.uuid4().hex[:8]}"
     d_dir = _deck_dir(deck_id)
@@ -575,6 +577,7 @@ async def api_plan_upload(
         is_proposal=is_proposal,
         design_style=design_style,
         cover_template=cover_template,
+        include_dividers=include_dividers,
     )
     return _run_plan(req, request, parsed_doc=parsed_doc, deck_id=deck_id)
 

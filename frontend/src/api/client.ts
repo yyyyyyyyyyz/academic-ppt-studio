@@ -209,6 +209,7 @@ export async function planDeck(payload: {
   is_proposal: boolean;
   design_style?: DesignStyle;
   cover_template?: CoverTemplateId;
+  include_dividers?: boolean;
 }): Promise<{
   deck_spec: DeckSpec;
   artifact_urls: Record<string, string>;

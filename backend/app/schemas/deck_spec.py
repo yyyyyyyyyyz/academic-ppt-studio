@@ -331,6 +331,7 @@ class PlanRequest(BaseModel):
     is_proposal: bool = False
     design_style: DesignStyle = DesignStyle.defense_modular
     cover_template: CoverTemplateId = CoverTemplateId.hero_band_bottom_bar
+    include_dividers: Optional[bool] = None
 
 
 class GenerateFigureRequest(BaseModel):

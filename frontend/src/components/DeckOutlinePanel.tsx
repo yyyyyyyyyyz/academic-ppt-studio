@@ -7,6 +7,7 @@ interface DeckOutlinePanelProps {
   accentColor?: string;
   onSelectSlide: (slideNo: number) => void;
   onAddContentSlide: () => void;
+  onAddDividerSlide?: () => void;
   onDeleteSlide: (slideNo: number) => void;
 }
 
@@ -16,12 +17,13 @@ export const DeckOutlinePanel: React.FC<DeckOutlinePanelProps> = ({
   accentColor = "var(--nature-crimson)",
   onSelectSlide,
   onAddContentSlide,
+  onAddDividerSlide,
   onDeleteSlide,
 }) => {
   return (
     <aside
       style={{
-        width: 248,
+        width: 256,
         background: "var(--surface-pure)",
         borderRight: "1px solid var(--rule-hairline)",
         display: "flex",
@@ -33,31 +35,43 @@ export const DeckOutlinePanel: React.FC<DeckOutlinePanelProps> = ({
     >
       <div
         style={{
-          padding: "13px 14px",
+          padding: "12px 14px",
           borderBottom: "1px solid var(--rule-strong)",
           borderTop: `2px solid ${accentColor}`,
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          gap: 8,
+          gap: 6,
         }}
       >
-        <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-          <span className="font-serif" style={{ fontWeight: 700, fontSize: 15.5, color: "var(--ink-primary)" }}>
-            页面目录
+        <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
+          <span className="font-serif" style={{ fontWeight: 700, fontSize: 15, color: "var(--ink-primary)" }}>
+            页面
           </span>
-          <span className="font-mono" style={{ fontSize: 11.5, color: "var(--ink-muted)" }}>
+          <span className="font-mono" style={{ fontSize: 11, color: "var(--ink-muted)" }}>
             ({slides.length})
           </span>
         </div>
-        <button
-          type="button"
-          className="btn-editorial-ghost"
-          onClick={onAddContentSlide}
-          style={{ padding: "4px 10px", fontSize: 12 }}
-        >
-          + 加页
-        </button>
+        <div style={{ display: "flex", gap: 4 }}>
+          {onAddDividerSlide && (
+            <button
+              type="button"
+              className="btn-editorial-ghost"
+              onClick={onAddDividerSlide}
+              style={{ padding: "3px 7px", fontSize: 11 }}
+            >
+              + 过渡
+            </button>
+          )}
+          <button
+            type="button"
+            className="btn-editorial-ghost"
+            onClick={onAddContentSlide}
+            style={{ padding: "3px 7px", fontSize: 11 }}
+          >
+            + 正文
+          </button>
+        </div>
       </div>
 
       <div style={{ flex: 1, overflowY: "auto" }}>
@@ -65,17 +79,19 @@ export const DeckOutlinePanel: React.FC<DeckOutlinePanelProps> = ({
           const active = sl.slide_no === selectedSlideNo;
           const fig = sl.figure_spec;
           const kindLabel =
-            fig?.assets?.[0]?.engine === "cylview_3d"
-              ? "3D"
-              : fig?.assets?.[0]?.engine === "chemdraw_rdkit"
-                ? "2D"
-                : sl.slide_type === "cover"
-                  ? "封面"
-                  : sl.slide_type === "toc"
-                    ? "目录"
-                    : sl.slide_type === "closing"
-                      ? "尾页"
-                      : "";
+            sl.slide_type === "cover"
+              ? "封面"
+              : sl.slide_type === "toc"
+                ? "目录"
+                : sl.slide_type === "part_divider"
+                  ? "过渡"
+                  : sl.slide_type === "closing"
+                    ? "尾页"
+                    : fig?.assets?.[0]?.engine === "cylview_3d"
+                      ? "3D"
+                      : fig?.assets?.[0]?.engine === "chemdraw_rdkit"
+                        ? "2D"
+                        : "正文";
 
           return (
             <div
@@ -89,19 +105,32 @@ export const DeckOutlinePanel: React.FC<DeckOutlinePanelProps> = ({
                 background: active ? "var(--paper-bg)" : "var(--surface-pure)",
               }}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
-                <span
-                  className="font-mono"
-                  style={{
-                    fontSize: 10.5,
-                    fontWeight: 700,
-                    color: active ? accentColor : "var(--ink-muted)",
-                  }}
-                >
-                  #{String(sl.slide_no).padStart(2, "0")}
-                  {kindLabel ? ` · ${kindLabel}` : ""}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <span
+                    className="font-mono"
+                    style={{
+                      fontSize: 10.5,
+                      fontWeight: 700,
+                      color: active ? accentColor : "var(--ink-muted)",
+                    }}
+                  >
+                    #{String(sl.slide_no).padStart(2, "0")}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 600,
+                      padding: "1px 5px",
+                      borderRadius: 2,
+                      background: active ? accentColor : "#F1F5F9",
+                      color: active ? "#FFFFFF" : "var(--ink-secondary)",
+                    }}
+                  >
+                    {kindLabel}
+                  </span>
                 </span>
-                {sl.slide_type === "content" && slides.length > 3 && (
+                {(sl.slide_type === "content" || sl.slide_type === "part_divider") && slides.length > 3 && (
                   <button
                     type="button"
                     onClick={(e) => {

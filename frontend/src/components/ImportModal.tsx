@@ -22,6 +22,7 @@ interface ImportModalProps {
     is_proposal: boolean;
     design_style: DesignStyle;
     cover_template: CoverTemplateId;
+    include_dividers: boolean;
   }) => Promise<void>;
   onPlanFile: (formData: FormData) => Promise<void>;
 }
@@ -105,11 +106,12 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   const [advisor, setAdvisor] = useState("");
   const [dateStr, setDateStr] = useState("2026 年 11 月");
   const [scenario, setScenario] = useState<ScenarioType>("defense");
-  const [slideCount, setSlideCount] = useState<number>(6);
+  const [slideCount, setSlideCount] = useState<number>(10);
   const [paletteId, setPaletteId] = useState<string>("lancet");
   const [designStyle, setDesignStyle] = useState<DesignStyle>("defense_modular");
   const [coverTemplate, setCoverTemplate] = useState<CoverTemplateId>("hero_band_bottom_bar");
   const [isProposal, setIsProposal] = useState<boolean>(false);
+  const [includeDividers, setIncludeDividers] = useState<boolean>(true);
   const [sourceText, setSourceText] = useState<string>(SAMPLE_OUTLINE);
 
   const [outlining, setOutlining] = useState(false);
@@ -143,6 +145,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
       is_proposal: isProposal,
       design_style: designStyle,
       cover_template: coverTemplate,
+      include_dividers: includeDividers,
     });
   };
 
@@ -187,6 +190,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     fd.append("is_proposal", String(isProposal));
     fd.append("design_style", designStyle);
     fd.append("cover_template", coverTemplate);
+    fd.append("include_dividers", String(includeDividers));
     await onPlanFile(fd);
   };
 
@@ -387,6 +391,15 @@ export const ImportModal: React.FC<ImportModalProps> = ({
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink-primary)" }}>PPT 大纲与内容</span>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, color: "var(--ink-secondary)", cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={includeDividers}
+                    onChange={(e) => setIncludeDividers(e.target.checked)}
+                    style={{ accentColor: previewPrimary }}
+                  />
+                  <span>含章节过渡页</span>
+                </label>
                 <label style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, color: "var(--ink-secondary)", cursor: "pointer" }}>
                   <input
                     type="checkbox"

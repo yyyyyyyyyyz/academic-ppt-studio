@@ -164,6 +164,7 @@ export function App() {
     is_proposal: boolean;
     design_style: DesignStyle;
     cover_template?: CoverTemplateId;
+    include_dividers?: boolean;
   }) => {
     setBusy(true);
     setErrorMsg(null);
@@ -194,11 +195,12 @@ export function App() {
       advisor: "计算药化教研室",
       date_str: "2026 年 11 月",
       scenario: "literature_review",
-      target_slide_count: 6,
+      target_slide_count: 8,
       palette_id: "nejm",
       is_proposal: false,
       design_style: "defense_modular",
       cover_template: "hero_band_bottom_bar",
+      include_dividers: true,
     });
   };
 
@@ -303,6 +305,41 @@ export function App() {
     setDeck(nextDeck);
     setSelectedSlideNo(newNo);
     await refreshSlidePreview(nextDeck, newNo, activeLayers);
+  };
+
+  const handleAddDividerSlide = async () => {
+    if (!deck) return;
+    const partCount = deck.slides.filter((s) => s.slide_type === "part_divider").length + 1;
+    const insertAt = Math.max(1, deck.slides.length - 1);
+    const dividerSlide: SlideSpec = {
+      slide_no: insertAt + 1,
+      slide_type: "part_divider",
+      layout_id: "part_divider",
+      section_name: `第${partCount}部分 章节过渡`,
+      eyebrow: `PART 0${partCount}`,
+      title: `研究进展第 ${partCount} 部分`,
+      takeaway: "核心研究思路 · 关键实验结果 · 机理深入解析",
+      figure_spec: null,
+      kpis: [],
+      insights: [],
+      toc_items: [],
+      footer_left: deck.meta.deck_title,
+      speaker_notes: `过渡至第 ${partCount} 部分。`,
+    };
+    const merged = [
+      ...deck.slides.slice(0, insertAt),
+      dividerSlide,
+      ...deck.slides.slice(insertAt),
+    ].map((s, idx) => ({ ...s, slide_no: idx + 1 }));
+    const nextDeck: DeckSpec = {
+      ...deck,
+      meta: { ...deck.meta, target_slide_count: merged.length },
+      slides: merged,
+    };
+    setDeck(nextDeck);
+    const addedNo = insertAt + 1;
+    setSelectedSlideNo(addedNo);
+    await refreshSlidePreview(nextDeck, addedNo, activeLayers);
   };
 
   const handleDeleteSlide = (slideNo: number) => {
@@ -607,6 +644,7 @@ export function App() {
             accentColor={activeAccent}
             onSelectSlide={setSelectedSlideNo}
             onAddContentSlide={handleAddContentSlide}
+            onAddDividerSlide={handleAddDividerSlide}
             onDeleteSlide={handleDeleteSlide}
           />
           <SlideCanvasPreview
@@ -666,15 +704,34 @@ export function App() {
 
                 <p
                   style={{
-                    margin: "0 0 24px 0",
+                    margin: "0 0 18px 0",
                     fontSize: 15,
                     lineHeight: 1.7,
                     color: "var(--ink-secondary)",
                     maxWidth: 460,
                   }}
                 >
-                  导入 Word 自动提炼汇报大纲，定制多种 2D / 3D 分子结构式并一键导出可编辑 PPT。
+                  导入 Word 自动提炼汇报大纲，定制多种 2D / 3D 分子结构式并一键导出全原生可编辑 PPT。
                 </p>
+
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 22 }}>
+                  {["封面", "目录", "章节过渡", "可视化排版", "尾页"].map((st, idx) => (
+                    <span
+                      key={st}
+                      style={{
+                        fontSize: 11.5,
+                        fontWeight: 600,
+                        padding: "3px 9px",
+                        borderRadius: 2,
+                        background: "var(--surface-pure)",
+                        border: "1px solid #DCD8CF",
+                        color: idx === 2 ? "var(--oxford-navy)" : "var(--ink-secondary)",
+                      }}
+                    >
+                      {st}
+                    </span>
+                  ))}
+                </div>
 
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 28 }}>
                   <button

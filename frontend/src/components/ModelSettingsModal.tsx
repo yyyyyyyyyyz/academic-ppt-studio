@@ -1,23 +1,5 @@
 import React, { useEffect, useState } from "react";
 import {
-  AlertCircle,
-  CheckCircle2,
-  ChevronDown,
-  ChevronUp,
-  Copy,
-  Cpu,
-  Eye,
-  EyeOff,
-  KeyRound,
-  Lock,
-  PlusCircle,
-  RefreshCw,
-  ShieldCheck,
-  Ticket,
-  Wifi,
-  X,
-} from "lucide-react";
-import {
   adminGenerateCodes,
   adminListCodes,
   adminSetCodeActive,
@@ -159,7 +141,7 @@ export const ModelSettingsModal: React.FC<ModelSettingsModalProps> = ({
 
   const handleAdminLoad = async () => {
     if (!adminSecret.trim()) {
-      setAdminError("请先输入管理员密钥（ADMIN_SECRET）。");
+      setAdminError("请输入管理员密钥");
       return;
     }
     setAdminBusy(true);
@@ -176,7 +158,7 @@ export const ModelSettingsModal: React.FC<ModelSettingsModalProps> = ({
 
   const handleAdminGenerate = async () => {
     if (!adminSecret.trim()) {
-      setAdminError("请先输入管理员密钥（ADMIN_SECRET）。");
+      setAdminError("请输入管理员密钥");
       return;
     }
     setAdminBusy(true);
@@ -191,7 +173,7 @@ export const ModelSettingsModal: React.FC<ModelSettingsModalProps> = ({
         label: newLabel.trim(),
         valid_days: validDaysNum && validDaysNum > 0 ? validDaysNum : null,
       });
-      setLastCreatedCodes(res.codes.map((c) => `${c.code}（${c.credits_left}次）`));
+      setLastCreatedCodes(res.codes.map((c) => `${c.code} (${c.credits_left}次)`));
       const listed = await adminListCodes(adminSecret.trim());
       setAdminCodes(listed.codes);
     } catch (err) {
@@ -250,8 +232,8 @@ export const ModelSettingsModal: React.FC<ModelSettingsModalProps> = ({
         className="editorial-fade-in"
         style={{
           width: "100%",
-          maxWidth: 760,
-          maxHeight: "92vh",
+          maxWidth: 660,
+          maxHeight: "90vh",
           overflowY: "auto",
           background: "var(--surface-pure)",
           borderRadius: 2,
@@ -265,133 +247,81 @@ export const ModelSettingsModal: React.FC<ModelSettingsModalProps> = ({
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            padding: "16px 24px",
+            padding: "13px 20px",
             borderBottom: "1px solid var(--rule-strong)",
-            background: "var(--surface-pure)",
           }}
         >
-          <div>
-            <div className="kicker" style={{ color: "var(--nature-crimson)", marginBottom: 3 }}>
-              HOSTED PRO &amp; BYOK CONFIGURATION
-            </div>
-            <div className="font-serif" style={{ fontSize: 19, fontWeight: 700, color: "var(--ink-primary)" }}>
-              AI 模型、官方兑换码与本地引擎设置
-            </div>
+          <div className="font-serif" style={{ fontSize: 17.5, fontWeight: 700, color: "var(--ink-primary)" }}>
+            AI 模型设置
           </div>
           <button
             type="button"
             onClick={onClose}
-            style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--ink-secondary)", padding: 4 }}
-            aria-label="关闭模型设置"
+            style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--ink-secondary)", fontSize: 20, lineHeight: 1, padding: 4 }}
+            aria-label="关闭"
           >
-            <X size={20} />
+            ×
           </button>
         </div>
 
-        <form onSubmit={handleSave} style={{ padding: 24, display: "flex", flexDirection: "column", gap: 18 }}>
-          {/* Privacy Notice */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "flex-start",
-              gap: 10,
-              padding: "11px 14px",
-              background: "#F4F8F6",
-              border: "1px solid #C8DED2",
-              fontSize: 12.5,
-              color: "#1B4332",
-              lineHeight: 1.55,
-            }}
-          >
-            <ShieldCheck size={17} style={{ color: "var(--audit-sage)", flexShrink: 0, marginTop: 2 }} />
-            <div>
-              <strong>三种接入方式自由切换：</strong>可用站长托管的 <strong>官方 Pro 学术模型（兑换码）</strong>、免费离线的{" "}
-              <strong>本地确定性引擎</strong>，或填入个人 API Key（仅存本地 <code>localStorage</code>）。
-            </div>
+        <form onSubmit={handleSave} style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+          {/* Compact 3-Column Service Selector */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+            {AI_PRESETS.map((preset) => {
+              const selected = draft.presetId === preset.id;
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => handleSelectPreset(preset.id)}
+                  style={{
+                    textAlign: "left",
+                    padding: "9px 11px",
+                    background: selected ? "#FDF8F8" : "var(--surface-pure)",
+                    border: selected ? "1.5px solid var(--nature-crimson)" : "1px solid var(--rule-hairline)",
+                    borderRadius: 2,
+                    cursor: "pointer",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: selected ? "var(--nature-crimson)" : "var(--ink-primary)" }}>
+                      {preset.name}
+                    </span>
+                    <span
+                      className="font-mono"
+                      style={{
+                        fontSize: 9.5,
+                        padding: "1px 5px",
+                        background: selected ? "var(--nature-crimson)" : "var(--paper-bg)",
+                        color: selected ? "#FFFFFF" : "var(--ink-muted)",
+                      }}
+                    >
+                      {preset.badge}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--ink-muted)", marginTop: 3 }}>{preset.description}</div>
+                </button>
+              );
+            })}
           </div>
 
-          {/* Preset Selector */}
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-secondary)", marginBottom: 8 }}>
-              1. 选择 AI 服务来源
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10 }}>
-              {AI_PRESETS.map((preset) => {
-                const selected = draft.presetId === preset.id;
-                return (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    onClick={() => handleSelectPreset(preset.id)}
-                    style={{
-                      textAlign: "left",
-                      padding: "11px 12px",
-                      background: selected ? "#FDF8F8" : "var(--surface-pure)",
-                      border: selected ? "1.5px solid var(--nature-crimson)" : "1px solid var(--rule-hairline)",
-                      borderRadius: 2,
-                      cursor: "pointer",
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 4,
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: selected ? "var(--nature-crimson)" : "var(--ink-primary)" }}>
-                        {preset.name}
-                      </span>
-                      <span
-                        className="font-mono"
-                        style={{
-                          fontSize: 10,
-                          padding: "1px 6px",
-                          background: selected ? "var(--nature-crimson)" : "var(--paper-bg)",
-                          color: selected ? "#FFFFFF" : "var(--ink-muted)",
-                          border: selected ? "none" : "1px solid var(--rule-hairline)",
-                        }}
-                      >
-                        {preset.badge}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: 11.5, color: "var(--ink-muted)", lineHeight: 1.4 }}>
-                      {preset.description}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Section 2: Hosted / BYOK / Local */}
+          {/* Credentials Box */}
           {draft.provider === "hosted" ? (
             <div
               style={{
-                padding: 16,
+                padding: 13,
                 background: "var(--paper-bg)",
                 border: "1px solid var(--rule-hairline)",
                 display: "flex",
                 flexDirection: "column",
-                gap: 12,
+                gap: 9,
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink-primary)", display: "flex", alignItems: "center", gap: 6 }}>
-                  <Ticket size={15} color="var(--nature-crimson)" />
-                  <span>2. 输入官方 Pro 次数兑换码</span>
-                </div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-primary)" }}>兑换码</span>
                 {billingStatus && (
-                  <span
-                    className="font-mono"
-                    style={{
-                      fontSize: 11,
-                      padding: "2px 8px",
-                      background: billingStatus.hosted_ai_enabled ? "#EBF5F0" : "#FDF2F2",
-                      color: billingStatus.hosted_ai_enabled ? "var(--audit-sage)" : "var(--nature-crimson)",
-                      border: `1px solid ${billingStatus.hosted_ai_enabled ? "#B7DEC9" : "#F5C2C2"}`,
-                    }}
-                  >
-                    {billingStatus.hosted_ai_enabled
-                      ? `${billingStatus.model_label} · 每次消耗 ${billingStatus.plan_cost} 次`
-                      : "服务端尚未配置官方模型 Key"}
+                  <span className="font-mono" style={{ fontSize: 11, color: billingStatus.hosted_ai_enabled ? "var(--audit-sage)" : "var(--nature-crimson)" }}>
+                    {billingStatus.hosted_ai_enabled ? billingStatus.model_label : "未配置服务"}
                   </span>
                 )}
               </div>
@@ -404,9 +334,9 @@ export const ModelSettingsModal: React.FC<ModelSettingsModalProps> = ({
                     setDraft({ ...draft, accessCode: e.target.value.toUpperCase() });
                     setRedeemResult(null);
                   }}
-                  placeholder="输入兑换码，如 PRO-8K2M-9X4Q"
+                  placeholder="PRO-XXXX-XXXX"
                   autoComplete="off"
-                  style={{ flex: 1, fontFamily: "var(--font-mono)", letterSpacing: "0.04em" }}
+                  style={{ flex: 1, fontFamily: "var(--font-mono)" }}
                 />
                 <button
                   type="button"
@@ -414,79 +344,49 @@ export const ModelSettingsModal: React.FC<ModelSettingsModalProps> = ({
                   disabled={checkingCode || !draft.accessCode.trim()}
                   onClick={handleCheckCode}
                 >
-                  <RefreshCw size={13} />
-                  <span>{checkingCode ? "查询中..." : "查询余额"}</span>
+                  {checkingCode ? "查询中..." : "查余额"}
                 </button>
               </div>
 
               {redeemResult && (
-                <div
-                  style={{
-                    padding: "9px 12px",
-                    background: redeemResult.valid ? "#EBF5F0" : "#FDF2F2",
-                    border: `1px solid ${redeemResult.valid ? "#B7DEC9" : "#F5C2C2"}`,
-                    fontSize: 12,
-                    color: redeemResult.valid ? "#1B4332" : "var(--nature-crimson)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                  }}
-                >
-                  <span>{redeemResult.message}</span>
-                  {redeemResult.label && <span className="font-mono">标签：{redeemResult.label}</span>}
-                </div>
-              )}
-
-              {billingStatus?.purchase_note && (
-                <div style={{ fontSize: 12, color: "var(--ink-muted)", lineHeight: 1.5 }}>
-                  获取说明：{billingStatus.purchase_note}
+                <div style={{ fontSize: 12, color: redeemResult.valid ? "var(--audit-sage)" : "var(--nature-crimson)" }}>
+                  {redeemResult.message}
                 </div>
               )}
             </div>
           ) : draft.provider !== "local" ? (
             <div
               style={{
-                padding: 16,
+                padding: 13,
                 background: "var(--paper-bg)",
                 border: "1px solid var(--rule-hairline)",
                 display: "flex",
                 flexDirection: "column",
-                gap: 12,
+                gap: 10,
               }}
             >
-              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-primary)", display: "flex", alignItems: "center", gap: 6 }}>
-                <KeyRound size={14} color="var(--nature-crimson)" />
-                <span>2. 填写接口参数（{activePreset.name}）</span>
-              </div>
-
               <label style={{ fontSize: 12 }}>
-                <div style={{ fontWeight: 600, marginBottom: 5, color: "var(--ink-secondary)" }}>API Key</div>
-                <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ fontWeight: 600, marginBottom: 4, color: "var(--ink-secondary)" }}>API Key ({activePreset.name})</div>
+                <div style={{ display: "flex", gap: 6 }}>
                   <input
                     className="editorial-input"
                     type={showKey ? "text" : "password"}
                     value={draft.apiKey}
                     onChange={(e) => setDraft({ ...draft, apiKey: e.target.value })}
-                    placeholder={activePreset.keyPlaceholder || "粘贴你的 API Key"}
+                    placeholder={activePreset.keyPlaceholder || "API Key"}
                     autoComplete="off"
                     style={{ flex: 1, fontFamily: "var(--font-mono)" }}
                   />
-                  <button
-                    type="button"
-                    className="btn-editorial-ghost"
-                    onClick={() => setShowKey((v) => !v)}
-                    title={showKey ? "隐藏 Key" : "显示 Key"}
-                  >
-                    {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                  <button type="button" className="btn-editorial-ghost" onClick={() => setShowKey((v) => !v)} style={{ fontSize: 11.5 }}>
+                    {showKey ? "隐藏" : "显示"}
                   </button>
                 </div>
               </label>
 
-              <div style={{ display: "grid", gridTemplateColumns: draft.provider === "openai" ? "1.3fr 1fr" : "1fr", gap: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: draft.provider === "openai" ? "1.3fr 1fr" : "1fr", gap: 10 }}>
                 {draft.provider === "openai" && (
                   <label style={{ fontSize: 12 }}>
-                    <div style={{ fontWeight: 600, marginBottom: 5, color: "var(--ink-secondary)" }}>Base URL</div>
+                    <div style={{ fontWeight: 600, marginBottom: 4, color: "var(--ink-secondary)" }}>Base URL</div>
                     <input
                       className="editorial-input"
                       value={draft.baseUrl}
@@ -497,7 +397,7 @@ export const ModelSettingsModal: React.FC<ModelSettingsModalProps> = ({
                   </label>
                 )}
                 <label style={{ fontSize: 12 }}>
-                  <div style={{ fontWeight: 600, marginBottom: 5, color: "var(--ink-secondary)" }}>模型名称</div>
+                  <div style={{ fontWeight: 600, marginBottom: 4, color: "var(--ink-secondary)" }}>模型</div>
                   <input
                     className="editorial-input"
                     value={draft.model}
@@ -509,56 +409,26 @@ export const ModelSettingsModal: React.FC<ModelSettingsModalProps> = ({
               </div>
             </div>
           ) : (
-            <div
-              style={{
-                padding: 14,
-                background: "var(--paper-bg)",
-                border: "1px solid var(--rule-hairline)",
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                fontSize: 12.5,
-                color: "var(--ink-secondary)",
-              }}
-            >
-              <Cpu size={16} color="var(--oxford-navy)" />
-              <span>
-                当前为 <strong>本地确定性模式</strong>：直接根据 Word/Markdown 段落与 SMILES 构建幻灯片与四风格结构式，零 API 开销。
-              </span>
+            <div style={{ padding: "10px 12px", background: "var(--paper-bg)", border: "1px solid var(--rule-hairline)", fontSize: 12, color: "var(--ink-secondary)" }}>
+              离线解析 Word、表格与 2D / 3D 分子结构，无需 API Key。
             </div>
           )}
 
-          {/* Connectivity Test Row */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-            <button type="button" className="btn-editorial-ghost" disabled={testDisabled} onClick={handleTest}>
-              <Wifi size={14} color="var(--oxford-navy)" />
-              <span>{testing ? "正在测试连通性..." : "测试连通性"}</span>
+          {/* Connection Test Row */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <button type="button" className="btn-editorial-ghost" disabled={testDisabled} onClick={handleTest} style={{ fontSize: 12 }}>
+              {testing ? "测试中..." : "测试连接"}
             </button>
-
             {testResult && (
-              <div
-                style={{
-                  flex: 1,
-                  minWidth: 240,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  fontSize: 12,
-                  color: testResult.ok ? "var(--audit-sage)" : "var(--nature-crimson)",
-                  fontWeight: 600,
-                }}
-              >
-                {testResult.ok ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
-                <span>
-                  {testResult.message}
-                  {testResult.ok && testResult.latency_ms > 0 ? ` (${testResult.latency_ms} ms)` : ""}
-                </span>
-              </div>
+              <span style={{ fontSize: 12, color: testResult.ok ? "var(--audit-sage)" : "var(--nature-crimson)", fontWeight: 600 }}>
+                {testResult.message}
+                {testResult.ok && testResult.latency_ms > 0 ? ` (${testResult.latency_ms} ms)` : ""}
+              </span>
             )}
           </div>
 
-          {/* Collapsible Owner Admin Panel */}
-          <div style={{ borderTop: "1px dashed var(--rule-hairline)", paddingTop: 12 }}>
+          {/* Collapsible Admin Panel */}
+          <div style={{ borderTop: "1px dashed var(--rule-hairline)", paddingTop: 10 }}>
             <button
               type="button"
               onClick={() => setAdminOpen((v) => !v)}
@@ -567,162 +437,95 @@ export const ModelSettingsModal: React.FC<ModelSettingsModalProps> = ({
                 border: "none",
                 padding: 0,
                 cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                fontSize: 12,
+                fontSize: 11.5,
                 fontWeight: 600,
                 color: "var(--ink-muted)",
               }}
             >
-              <Lock size={13} />
-              <span>站长发码管理（仅管理员使用）</span>
-              {adminOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              {adminOpen ? "▾ 收起站长发码" : "▸ 站长发码"}
             </button>
 
             {adminOpen && (
-              <div
-                style={{
-                  marginTop: 12,
-                  padding: 14,
-                  background: "#FAF8F5",
-                  border: "1px solid var(--rule-hairline)",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 12,
-                }}
-              >
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <div style={{ marginTop: 10, padding: 12, background: "#FAF8F5", border: "1px solid var(--rule-hairline)", display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ display: "flex", gap: 8 }}>
                   <input
                     className="editorial-input"
                     type="password"
                     value={adminSecret}
                     onChange={(e) => setAdminSecret(e.target.value)}
-                    placeholder="输入服务器 ADMIN_SECRET"
-                    style={{ flex: 1, minWidth: 200, fontFamily: "var(--font-mono)" }}
+                    placeholder="ADMIN_SECRET"
+                    style={{ flex: 1, fontFamily: "var(--font-mono)" }}
                   />
-                  <button type="button" className="btn-editorial-ghost" disabled={adminBusy} onClick={handleAdminLoad}>
-                    <RefreshCw size={13} />
-                    <span>加载卡密列表</span>
+                  <button type="button" className="btn-editorial-ghost" disabled={adminBusy} onClick={handleAdminLoad} style={{ fontSize: 12 }}>
+                    列表
                   </button>
                 </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}>
-                  <label style={{ fontSize: 11.5 }}>
-                    <div style={{ color: "var(--ink-muted)", marginBottom: 4 }}>生成数量</div>
-                    <input
-                      className="editorial-input"
-                      type="number"
-                      min={1}
-                      max={100}
-                      value={newCount}
-                      onChange={(e) => setNewCount(Number(e.target.value))}
-                    />
+                  <label style={{ fontSize: 11 }}>
+                    <div style={{ color: "var(--ink-muted)", marginBottom: 3 }}>数量</div>
+                    <input className="editorial-input" type="number" min={1} max={100} value={newCount} onChange={(e) => setNewCount(Number(e.target.value))} />
                   </label>
-                  <label style={{ fontSize: 11.5 }}>
-                    <div style={{ color: "var(--ink-muted)", marginBottom: 4 }}>每码可用次数</div>
-                    <input
-                      className="editorial-input"
-                      type="number"
-                      min={1}
-                      max={10000}
-                      value={newCredits}
-                      onChange={(e) => setNewCredits(Number(e.target.value))}
-                    />
+                  <label style={{ fontSize: 11 }}>
+                    <div style={{ color: "var(--ink-muted)", marginBottom: 3 }}>次数</div>
+                    <input className="editorial-input" type="number" min={1} max={10000} value={newCredits} onChange={(e) => setNewCredits(Number(e.target.value))} />
                   </label>
-                  <label style={{ fontSize: 11.5 }}>
-                    <div style={{ color: "var(--ink-muted)", marginBottom: 4 }}>套餐标签</div>
-                    <input
-                      className="editorial-input"
-                      value={newLabel}
-                      onChange={(e) => setNewLabel(e.target.value)}
-                      placeholder="如 体验卡5次"
-                    />
+                  <label style={{ fontSize: 11 }}>
+                    <div style={{ color: "var(--ink-muted)", marginBottom: 3 }}>标签</div>
+                    <input className="editorial-input" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="5次卡" />
                   </label>
-                  <label style={{ fontSize: 11.5 }}>
-                    <div style={{ color: "var(--ink-muted)", marginBottom: 4 }}>有效天数（留空永久）</div>
-                    <input
-                      className="editorial-input"
-                      type="number"
-                      min={1}
-                      value={newValidDays}
-                      onChange={(e) => setNewValidDays(e.target.value)}
-                      placeholder="30"
-                    />
+                  <label style={{ fontSize: 11 }}>
+                    <div style={{ color: "var(--ink-muted)", marginBottom: 3 }}>天数</div>
+                    <input className="editorial-input" type="number" min={1} value={newValidDays} onChange={(e) => setNewValidDays(e.target.value)} placeholder="30" />
                   </label>
                 </div>
 
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                  <button type="button" className="btn-editorial-primary" disabled={adminBusy} onClick={handleAdminGenerate}>
-                    <PlusCircle size={13} />
-                    <span>批量生成兑换码</span>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button type="button" className="btn-editorial-primary" disabled={adminBusy} onClick={handleAdminGenerate} style={{ fontSize: 12 }}>
+                    生成兑换码
                   </button>
                   {lastCreatedCodes.length > 0 && (
                     <button
                       type="button"
                       className="btn-editorial-ghost"
+                      style={{ fontSize: 12 }}
                       onClick={() => {
                         navigator.clipboard?.writeText(lastCreatedCodes.join("\n"));
                         setCopiedFlag(true);
                       }}
                     >
-                      <Copy size={13} />
-                      <span>{copiedFlag ? "已复制" : `复制新生成的 ${lastCreatedCodes.length} 个卡密`}</span>
+                      {copiedFlag ? "已复制" : "复制"}
                     </button>
                   )}
                 </div>
 
-                {adminError && (
-                  <div style={{ fontSize: 12, color: "var(--nature-crimson)", fontWeight: 600 }}>{adminError}</div>
-                )}
+                {adminError && <div style={{ fontSize: 12, color: "var(--nature-crimson)" }}>{adminError}</div>}
 
                 {lastCreatedCodes.length > 0 && (
-                  <div
-                    className="font-mono"
-                    style={{
-                      padding: 10,
-                      background: "var(--surface-pure)",
-                      border: "1px solid var(--rule-hairline)",
-                      fontSize: 11.5,
-                      whiteSpace: "pre-wrap",
-                    }}
-                  >
+                  <div className="font-mono" style={{ padding: 8, background: "#FFF", border: "1px solid var(--rule-hairline)", fontSize: 11, whiteSpace: "pre-wrap" }}>
                     {lastCreatedCodes.join("\n")}
                   </div>
                 )}
 
                 {adminCodes.length > 0 && (
-                  <div style={{ maxHeight: 190, overflowY: "auto", border: "1px solid var(--rule-hairline)", background: "#FFF" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5 }}>
+                  <div style={{ maxHeight: 160, overflowY: "auto", border: "1px solid var(--rule-hairline)", background: "#FFF" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
                       <thead>
                         <tr style={{ background: "var(--paper-bg)", textAlign: "left" }}>
-                          <th style={{ padding: "6px 8px" }}>兑换码</th>
-                          <th style={{ padding: "6px 8px" }}>标签</th>
-                          <th style={{ padding: "6px 8px" }}>余/总次</th>
-                          <th style={{ padding: "6px 8px" }}>状态</th>
-                          <th style={{ padding: "6px 8px" }}>操作</th>
+                          <th style={{ padding: "5px 8px" }}>兑换码</th>
+                          <th style={{ padding: "5px 8px" }}>余/总</th>
+                          <th style={{ padding: "5px 8px" }}>状态</th>
+                          <th style={{ padding: "5px 8px" }}>操作</th>
                         </tr>
                       </thead>
                       <tbody>
                         {adminCodes.map((row) => (
                           <tr key={row.code} style={{ borderTop: "1px solid var(--rule-hairline)" }}>
-                            <td className="font-mono" style={{ padding: "6px 8px", fontWeight: 600 }}>
-                              {row.code}
-                            </td>
-                            <td style={{ padding: "6px 8px", color: "var(--ink-muted)" }}>{row.label || "—"}</td>
-                            <td className="font-mono" style={{ padding: "6px 8px" }}>
-                              {row.credits_left} / {row.credits_total}
-                            </td>
-                            <td style={{ padding: "6px 8px", color: row.valid ? "var(--audit-sage)" : "var(--nature-crimson)" }}>
-                              {!row.active ? "已停用" : row.expired ? "已过期" : row.credits_left <= 0 ? "已用尽" : "有效"}
-                            </td>
-                            <td style={{ padding: "6px 8px" }}>
-                              <button
-                                type="button"
-                                className="btn-editorial-ghost"
-                                style={{ padding: "2px 8px", fontSize: 11 }}
-                                onClick={() => handleToggleCodeActive(row.code, !row.active)}
-                              >
+                            <td className="font-mono" style={{ padding: "5px 8px" }}>{row.code}</td>
+                            <td className="font-mono" style={{ padding: "5px 8px" }}>{row.credits_left}/{row.credits_total}</td>
+                            <td style={{ padding: "5px 8px" }}>{!row.active ? "停用" : row.expired ? "过期" : row.credits_left <= 0 ? "用尽" : "有效"}</td>
+                            <td style={{ padding: "5px 8px" }}>
+                              <button type="button" className="btn-editorial-ghost" style={{ padding: "2px 6px", fontSize: 10.5 }} onClick={() => handleToggleCodeActive(row.code, !row.active)}>
                                 {row.active ? "停用" : "启用"}
                               </button>
                             </td>
@@ -736,34 +539,25 @@ export const ModelSettingsModal: React.FC<ModelSettingsModalProps> = ({
             )}
           </div>
 
-          {/* Footer Buttons */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              paddingTop: 14,
-              borderTop: "1px solid var(--rule-hairline)",
-            }}
-          >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 10, borderTop: "1px solid var(--rule-hairline)" }}>
             <button
               type="button"
               className="btn-editorial-ghost"
+              style={{ fontSize: 12 }}
               onClick={() => {
                 setDraft(DEFAULT_AI_CONFIG);
                 setTestResult(null);
                 setRedeemResult(null);
               }}
             >
-              恢复本地免费模式
+              恢复本地
             </button>
-
-            <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ display: "flex", gap: 8 }}>
               <button type="button" className="btn-editorial-ghost" onClick={onClose}>
                 取消
               </button>
               <button type="submit" className="btn-editorial-primary">
-                保存配置
+                保存
               </button>
             </div>
           </div>

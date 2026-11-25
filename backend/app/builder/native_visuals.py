@@ -518,6 +518,16 @@ def _atom_style_hex(
         if atomic_num in (15, 16):
             return "#9A6B16"
         return "#1F4E78"
+    if style == "jacs_terracotta":
+        if atomic_num in (0, 1, 6):
+            return "#9A3412"
+        if atomic_num == 7:
+            return "#1F4E78"
+        if atomic_num in (8, 9, 17, 35, 53):
+            return "#B91C1C"
+        if atomic_num in (15, 16):
+            return "#9A6B16"
+        return "#1F4E78"
 
     carbon_hex = "#141E2B"
     if atomic_num in (0, 1, 6):
@@ -912,16 +922,25 @@ def add_native_cylview3d_group(
     height_in: float,
     pal: ScientificPalette,
 ) -> None:
-    """Build a 100% natively editable Z-sorted 3D ball-and-stick GroupShape using ETKDGv3 + MMFF94."""
+    """Build a 100% natively editable Z-sorted 3D conformer GroupShape matching all 5 3D styles."""
     smiles = asset.smiles or "c1ccnc(c1)c2ccccn2"
+    style = (asset.style_3d or "ball_stick").lower()
+    style_cfg = {
+        "ball_stick": {"sphere_mult": 1.0, "bond_mult": 1.0, "draw_bonds": True},
+        "stick_clean": {"sphere_mult": 0.40, "bond_mult": 1.35, "draw_bonds": True},
+        "spacefill_cpk": {"sphere_mult": 2.25, "bond_mult": 0.0, "draw_bonds": False},
+        "pymol_neon_green": {"sphere_mult": 1.04, "bond_mult": 1.05, "draw_bonds": True},
+        "metallic_studio": {"sphere_mult": 1.02, "bond_mult": 1.02, "draw_bonds": True},
+    }.get(style, {"sphere_mult": 1.0, "bond_mult": 1.0, "draw_bonds": True})
+
     mol, coords = _embed_and_align(smiles, rotation_deg=asset.rotation_deg)
     vis = _visible_atom_mask(mol, asset.show_nonpolar_h)
     n_atoms = mol.GetNumAtoms()
     if n_atoms == 0 or not np.any(vis):
         return
 
-    radii_a = np.array([_ATOM_RADII_A.get(a.GetAtomicNum(), 0.36) for a in mol.GetAtoms()], dtype=np.float32)
-    colors = [_atom_color(a.GetAtomicNum(), pal) for a in mol.GetAtoms()]
+    radii_a = np.array([_ATOM_RADII_A.get(a.GetAtomicNum(), 0.36) for a in mol.GetAtoms()], dtype=np.float32) * float(style_cfg["sphere_mult"])
+    colors = [_atom_color(a.GetAtomicNum(), pal, style_3d=style) for a in mol.GetAtoms()]
 
     vis_coords = coords[vis]
     vis_radii = radii_a[vis]
@@ -963,14 +982,14 @@ def add_native_cylview3d_group(
             etree.SubElement(srgb_sh, qn("a:alpha")).set("val", "7000")
     sh_ov.line.fill.background()
 
-    outline_hex = asset.outline_stroke if asset.outline_stroke and asset.outline_stroke != "#4A4A4A" else "#3D4652"
+    outline_hex = "#1E262E" if style == "pymol_neon_green" else (asset.outline_stroke if asset.outline_stroke and asset.outline_stroke != "#4A4A4A" else "#3D4652")
     vis_z = pts_z[vis]
     z_min = float(vis_z.min()) if len(vis_z) else -1.0
     z_max = float(vis_z.max()) if len(vis_z) else 1.0
     z_span = max(z_max - z_min, 1e-4)
 
     draw_items: List[Tuple[float, str, Any]] = []
-    for bond in mol.GetBonds():
+    for bond in (mol.GetBonds() if style_cfg["draw_bonds"] else []):
         i1, i2 = bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()
         if not (vis[i1] and vis[i2]):
             continue
@@ -989,7 +1008,7 @@ def add_native_cylview3d_group(
         draw_items.append((float(pts_z[idx]), "atom", (float(pts_x[idx]), float(pts_y[idx]), float(radii_in[idx]), colors[idx], dt)))
 
     draw_items.sort(key=lambda item: item[0])
-    bond_w_pt = max(2.6, min(5.4, 0.12 * scale * 72.0 * 1.9))
+    bond_w_pt = max(2.6, min(6.2, 0.12 * float(style_cfg["bond_mult"]) * scale * 72.0 * 1.9))
 
     for _, kind, payload in draw_items:
         if kind == "bond":

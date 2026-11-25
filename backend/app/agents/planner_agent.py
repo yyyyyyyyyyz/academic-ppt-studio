@@ -211,20 +211,35 @@ class PlannerAgent:
         self.provider = provider or ModelProvider()
         self.art_director = ArtDirectorAgent(provider=self.provider)
 
-    def _compute_structure_plan(self, target_slide_count: int, include_toc: bool = True) -> List[str]:
-        """Determine exact sequence of slide types matching Spec Section 2.4 dynamic scaling."""
+    def _compute_structure_plan(
+        self,
+        target_slide_count: int,
+        include_toc: bool = True,
+        include_dividers: Optional[bool] = None,
+    ) -> List[str]:
+        """Determine exact sequence of slide types including Cover, TOC, Part Dividers, Content, and Closing."""
         n = max(3, min(40, int(target_slide_count)))
         if n <= 3:
             return ["cover"] + ["content"] * (n - 2) + ["closing"]
-        if n <= 18:
+
+        use_dividers = include_dividers if include_dividers is not None else (n >= 10)
+        if not use_dividers:
             if include_toc:
                 return ["cover", "toc"] + ["content"] * (n - 3) + ["closing"]
             return ["cover"] + ["content"] * (n - 2) + ["closing"]
 
-        # Long defense deck (>=19): Cover + TOC + interleaved PART dividers + content + Closing
-        part_count = 3 if n < 24 else 4
-        remaining_content = n - 3 - part_count
-        seq = ["cover", "toc"]
+        if n == 4:
+            return ["cover", "toc", "content", "closing"] if include_toc else ["cover", "part_1", "content", "closing"]
+        if n == 5:
+            return ["cover", "toc", "part_1", "content", "closing"]
+
+        part_count = 2 if n < 13 else (3 if n < 24 else 4)
+        overhead = 3 if include_toc else 2  # cover + (toc) + closing
+        remaining_content = n - overhead - part_count
+        if remaining_content < part_count:
+            part_count = max(1, remaining_content)
+            remaining_content = n - overhead - part_count
+        seq = ["cover", "toc"] if include_toc else ["cover"]
         per_part = max(1, remaining_content // part_count)
         extra = remaining_content - per_part * part_count
         for p in range(part_count):
@@ -309,13 +324,18 @@ class PlannerAgent:
         advisor: str = "",
         date_str: str = "",
         parsed_doc: Optional[ParsedDocument] = None,
+        include_dividers: Optional[bool] = None,
     ) -> DeckSpec:
         doc = parsed_doc or parse_scientific_text(source_text, default_title=deck_title or "绿色催化与分子精准合成研究汇报")
         final_title = deck_title.strip() if deck_title and deck_title.strip() else doc.title
         proposal_flag = doc.is_proposal_hint if is_proposal is None else is_proposal
 
         include_toc = (design_style != DesignStyle.zero_fill_frameless) or (target_slide_count >= 11)
-        seq = self._compute_structure_plan(target_slide_count, include_toc=include_toc)
+        seq = self._compute_structure_plan(
+            target_slide_count,
+            include_toc=include_toc,
+            include_dividers=include_dividers,
+        )
         num_content = sum(1 for item in seq if item == "content")
 
         llm_slides = self._try_llm_content_outline(doc, num_content, scenario, proposal_flag)

@@ -20,7 +20,7 @@ from pptx.oxml.ns import qn
 from pptx.util import Inches, Pt
 
 from ..figure_factory.palettes import ScientificPalette, blend_with_white, hex_to_rgb
-from ..schemas.deck_spec import DeckSpec, FigureBoxIn, LayoutId, SlideSpec
+from ..schemas.deck_spec import DeckSpec, FigureBoxIn, InsightItem, LayoutId, SlideSpec
 from .xml_utils import (
     apply_soft_card_shadow,
     apply_zebra_table_borders,
@@ -70,13 +70,52 @@ def get_v5_figure_box(layout_id: LayoutId) -> FigureBoxIn:
         LayoutId.lit_overview_dual_card: FigureBoxIn(left=0.52, top=1.86, width=8.18, height=2.92),
         LayoutId.mechanism_3col_flow: FigureBoxIn(left=4.05, top=1.98, width=5.24, height=3.84),
         LayoutId.data_dashboard_table: FigureBoxIn(left=0.54, top=2.86, width=7.30, height=3.18),
-        LayoutId.bg_top_summary_3box: FigureBoxIn(left=4.56, top=3.26, width=4.16, height=2.60),
-        LayoutId.pain_points_left_arrows: FigureBoxIn(left=5.82, top=2.04, width=6.94, height=3.06),
-        LayoutId.fig_left_3step_chain: FigureBoxIn(left=0.56, top=2.06, width=7.44, height=3.84),
-        LayoutId.vs_center_wing: FigureBoxIn(left=3.90, top=2.06, width=5.52, height=3.84),
-        LayoutId.roadmap_layered_matrix: FigureBoxIn(left=1.42, top=1.74, width=7.32, height=4.16),
+        LayoutId.bg_top_summary_3box: FigureBoxIn(left=4.58, top=3.04, width=4.14, height=2.52),
+        LayoutId.pain_points_left_arrows: FigureBoxIn(left=5.82, top=2.26, width=6.94, height=2.82),
+        LayoutId.fig_left_3step_chain: FigureBoxIn(left=0.56, top=2.00, width=7.44, height=3.92),
+        LayoutId.vs_center_wing: FigureBoxIn(left=3.90, top=1.94, width=5.52, height=3.60),
+        LayoutId.roadmap_layered_matrix: FigureBoxIn(left=1.42, top=3.00, width=3.66, height=1.70),
     }
     return mapping.get(layout_id, FigureBoxIn(left=0.46, top=1.68, width=7.75, height=4.42))
+
+
+def extract_visual_metric_bars(spec: SlideSpec, max_bars: int = 4) -> list[Tuple[str, str, float]]:
+    """Extract numeric bar rows (label, display_val, fraction_0_to_1) from table_data or kpis for infographic bars."""
+    items: list[Tuple[str, str, float]] = []
+    num_pat = re.compile(r"(-?\d+(?:\.\d+)?)")
+    raw_pairs: list[Tuple[str, str, float]] = []
+    if spec.table_data and spec.table_data.rows:
+        for row in spec.table_data.rows[:max_bars]:
+            if len(row) >= 2:
+                lbl = str(row[0]).strip()[:12]
+                val_str = str(row[1]).strip()[:12]
+                m = num_pat.search(val_str)
+                if m:
+                    raw_pairs.append((lbl, val_str, abs(float(m.group(1)))))
+    if len(raw_pairs) < 2 and spec.kpis:
+        raw_pairs = []
+        for kp in spec.kpis[:max_bars]:
+            lbl = (kp.label if hasattr(kp, "label") else kp["label"])[:12]
+            val_str = (kp.value if hasattr(kp, "value") else kp["value"])[:12]
+            m = num_pat.search(val_str)
+            if m:
+                raw_pairs.append((lbl, val_str, abs(float(m.group(1)))))
+    if len(raw_pairs) < 2:
+        return []
+    mx = max((v for _, _, v in raw_pairs), default=1.0) or 1.0
+    for lbl, val_str, num_v in raw_pairs[:max_bars]:
+        items.append((lbl, val_str, max(0.16, min(1.0, num_v / mx))))
+    return items
+
+
+def split_card_head_body(raw: str, fallback_head: str) -> Tuple[str, str]:
+    txt = (raw or "").strip()
+    for sep in ("：", ":"):
+        if sep in txt:
+            h, b = txt.split(sep, 1)
+            if 2 <= len(h.strip()) <= 16 and b.strip():
+                return h.strip()[:14], b.strip()
+    return fallback_head, txt
 
 
 def add_rounded_box(
@@ -464,6 +503,12 @@ def add_v5_bottom_banner(slide, spec: SlideSpec, deck: DeckSpec, pal: Scientific
 
         add_line(slide, 4.09, y + h / 2, 4.42, y + h / 2, color_hex=pal.s2, width_pt=1.5, arrow_end=True)
         add_line(slide, 8.91, y + h / 2, 9.24, y + h / 2, color_hex=pal.s2, width_pt=1.5, arrow_end=True)
+    elif mode == "solid_bar":
+        add_rounded_box(slide, 0.40, y, 12.53, h, fill_hex=pal.s1, border_hex=None, radius=0.18, shadow=True, name="L2_bottom_bar")
+        badge = banner.get("badge", "突破")
+        add_rounded_box(slide, 0.48, y + 0.07, 1.38, h - 0.14, fill_hex="#FFFFFF", border_hex=None, radius=0.22)
+        add_box_text(slide, 0.48, y + 0.07, 1.38, h - 0.14, badge, size_pt=14.0, bold=True, color_hex=pal.s1, align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, 2.02, y, 10.76, h, banner.get("text", spec.takeaway), size_pt=14.0, bold=True, color_hex="#FFFFFF", align=PP_ALIGN.LEFT, ea_font=ea_f, latin_font=lat_f)
     else:
         border_c = "#FECACA" if mode == "rose_quote" else "#D6E0EC"
         badge_c = "#B91C1C" if mode == "rose_quote" else pal.s1
@@ -489,26 +534,31 @@ def _build_lit_overview_dual_card(slide, spec: SlideSpec, deck: DeckSpec, pal: S
     panel_title = (spec.figure_bottom_note or "药物化学结构演进与构效关系").split("|")[0]
     add_chamfered_header_tab(slide, 1.72, 1.35, 5.80, 0.30, panel_title, fill_hex=pal.s1, ea_font=ea_f, latin_font=lat_f, name="L2_fig_pill")
 
-    # Elevated Left & Right Pure-White Molecule Frames with widened 1.34" central corridor (3.94..5.28)
-    add_rounded_box(slide, 0.52, 1.84, 3.42, 2.96, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True, name="L2_subframe_left")
-    add_rounded_box(slide, 5.28, 1.84, 3.42, 2.96, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True, name="L2_subframe_right")
+    assets_n = len(spec.figure_spec.assets) if spec.figure_spec else 0
+    if assets_n <= 1:
+        add_rounded_box(slide, 0.52, 1.84, 8.20, 2.96, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True, name="L2_subframe_main")
+    else:
+        add_rounded_box(slide, 0.52, 1.84, 3.42, 2.96, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True, name="L2_subframe_left")
+        add_rounded_box(slide, 5.28, 1.84, 3.42, 2.96, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True, name="L2_subframe_right")
 
     if spec.figure_spec:
         figure_renderer(slide, spec.figure_spec, pal, override_box=get_v5_figure_box(LayoutId.lit_overview_dual_card), ea_font=ea_f, latin_font=lat_f)
-        # Subtle corner micro-tags (sublabel) inside left/right molecule cards
         tag_xs = (0.62, 5.38)
         for idx, asset in enumerate(spec.figure_spec.assets[:2]):
             if asset.sublabel:
                 tx = tag_xs[idx]
                 add_rounded_box(slide, tx, 1.92, 1.54, 0.24, fill_hex="#FFFFFF", border_hex=pal.s4, border_pt=0.7, radius=0.45, name=f"L2_mol_tag_{idx}")
-                add_box_text(slide, tx + 0.04, 1.92, 1.46, 0.24, asset.sublabel, size_pt=10.5, bold=True, color_hex=pal.s1, align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE, line_spacing=1.0, name=f"L3_mol_tag_{idx}", ea_font=ea_f, latin_font=lat_f)
+                add_box_text(slide, tx + 0.04, 1.92, 1.46, 0.24, asset.sublabel, size_pt=14.0, bold=True, color_hex=pal.s1, align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE, line_spacing=1.0, name=f"L3_mol_tag_{idx}", ea_font=ea_f, latin_font=lat_f)
 
+    hdr_tint = blend_with_white(pal.s1, 0.90)
     for idx, ins in enumerate(spec.insights[:2]):
         cx = 0.52 + idx * 4.16
         add_rounded_box(slide, cx, 4.92, 4.02, 1.08, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.08, shadow=True, name=f"L2_left_ins_{idx}")
-        add_rect(slide, cx + 0.09, 5.04, 0.055, 0.84, fill_hex=pal.s1)
-        add_box_text(slide, cx + 0.24, 4.96, 3.68, 0.30, f"{ins.index}  {ins.heading}", size_pt=14.5, bold=True, color_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
-        add_box_text(slide, cx + 0.24, 5.28, 3.68, 0.68, ins.body, size_pt=14.0, bold=False, color_hex=pal.ink, highlight_phrase=ins.highlight, highlight_color_hex=pal.s1, line_spacing=1.12, anchor=MSO_ANCHOR.TOP, ea_font=ea_f, latin_font=lat_f)
+        add_rect(slide, cx + 0.02, 4.94, 3.98, 0.34, fill_hex=hdr_tint)
+        add_rounded_box(slide, cx + 0.10, 4.97, 0.40, 0.28, fill_hex=pal.s1 if idx == 0 else pal.s2, border_hex=None, radius=0.22)
+        add_box_text(slide, cx + 0.10, 4.97, 0.40, 0.28, ins.index, size_pt=14.0, bold=True, color_hex="#FFFFFF", align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, cx + 0.56, 4.95, 3.38, 0.32, ins.heading, size_pt=14.5, bold=True, color_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, cx + 0.14, 5.31, 3.74, 0.65, ins.body, size_pt=14.0, bold=False, color_hex=pal.ink, highlight_phrase=ins.highlight, highlight_color_hex=pal.s1, line_spacing=1.10, anchor=MSO_ANCHOR.TOP, ea_font=ea_f, latin_font=lat_f)
 
     # Right Pure-White Elevated Dossier Card
     prof = spec.profile_card or {}
@@ -547,13 +597,20 @@ def _build_mechanism_3col_flow(slide, spec: SlideSpec, deck: DeckSpec, pal: Scie
     add_chamfered_header_tab(slide, 0.88, 1.39, 2.30, 0.30, "关键药效团解析", fill_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
 
     l_cards = spec.left_cards or [{"heading": i.heading, "body": i.body} for i in spec.insights[:3]]
+    soft_tint = blend_with_white(pal.s1, 0.92)
     for idx, lc in enumerate(l_cards[:3]):
-        cy = 1.90 + idx * 1.38
-        add_rect(slide, 0.54, cy + 0.08, 0.055, 1.06, fill_hex=pal.s1)
-        add_box_text(slide, 0.68, cy, 2.84, 0.34, lc.get("heading", ""), size_pt=14.5, bold=True, color_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
-        add_box_text(slide, 0.68, cy + 0.36, 2.84, 0.84, lc.get("body", ""), size_pt=14.0, bold=False, color_hex=pal.ink, line_spacing=1.12, anchor=MSO_ANCHOR.TOP, ea_font=ea_f, latin_font=lat_f)
-        if idx < 2:
-            add_line(slide, 0.56, cy + 1.28, 3.48, cy + 1.28, color_hex="#E2E8F0", width_pt=0.7)
+        cy = 1.84 + idx * 1.42
+        add_rounded_box(slide, 0.54, cy, 2.97, 1.16, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True)
+        add_rect(slide, 0.56, cy + 0.02, 2.93, 0.34, fill_hex=soft_tint)
+        add_rect(slide, 0.54, cy + 0.06, 0.06, 1.04, fill_hex=pal.s1)
+        add_box_text(slide, 0.68, cy + 0.03, 2.78, 0.32, lc.get("heading", ""), size_pt=14.5, bold=True, color_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, 0.68, cy + 0.38, 2.78, 0.74, lc.get("body", ""), size_pt=14.0, bold=False, color_hex=pal.ink, line_spacing=1.08, anchor=MSO_ANCHOR.TOP, ea_font=ea_f, latin_font=lat_f)
+        if idx < min(len(l_cards), 3) - 1:
+            plus_ov = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(1.90), Inches(cy + 1.18), Inches(0.24), Inches(0.22))
+            plus_ov.fill.solid()
+            plus_ov.fill.fore_color.rgb = _rgb(pal.s2)
+            plus_ov.line.fill.background()
+            add_box_text(slide, 1.90, cy + 1.17, 0.24, 0.24, "+", size_pt=14.0, bold=True, color_hex="#FFFFFF", align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE, ea_font=ea_f, latin_font=lat_f)
 
     # Refined Connector Arrow Left -> Center
     arr_l = slide.shapes.add_shape(MSO_SHAPE.RIGHT_ARROW, Inches(3.71), Inches(3.70), Inches(0.18), Inches(0.24))
@@ -600,12 +657,13 @@ def _build_mechanism_3col_flow(slide, spec: SlideSpec, deck: DeckSpec, pal: Scie
 
     r_chain = spec.right_chain or [{"title": k.value, "body": k.label} for k in spec.kpis[:2]] + [{"title": "高选择性", "body": "低脱靶与口服稳定"}]
     for idx, rc in enumerate(r_chain[:3]):
-        ry = 1.94 + idx * 1.38
-        add_rounded_box(slide, 9.83, ry, 2.97, 1.04, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.08, shadow=True)
-        add_box_text(slide, 9.93, ry + 0.08, 2.77, 0.34, rc.get("title", ""), size_pt=14.5, bold=True, color_hex=pal.s1, align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
-        add_box_text(slide, 9.93, ry + 0.44, 2.77, 0.54, rc.get("body", ""), size_pt=14.0, bold=False, color_hex=pal.ink, align=PP_ALIGN.CENTER, line_spacing=1.10, ea_font=ea_f, latin_font=lat_f)
+        ry = 1.90 + idx * 1.40
+        add_rounded_box(slide, 9.83, ry, 2.97, 1.06, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.08, shadow=True)
+        add_rect(slide, 9.85, ry + 0.02, 2.93, 0.06, fill_hex=pal.s1 if idx == 0 else pal.s2)
+        add_box_text(slide, 9.93, ry + 0.12, 2.77, 0.34, rc.get("title", ""), size_pt=14.5, bold=True, color_hex=pal.s1, align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, 9.93, ry + 0.46, 2.77, 0.54, rc.get("body", ""), size_pt=14.0, bold=False, color_hex=pal.ink, align=PP_ALIGN.CENTER, line_spacing=1.08, ea_font=ea_f, latin_font=lat_f)
         if idx < 2:
-            d_arr = slide.shapes.add_shape(MSO_SHAPE.DOWN_ARROW, Inches(11.19), Inches(ry + 1.08), Inches(0.24), Inches(0.24))
+            d_arr = slide.shapes.add_shape(MSO_SHAPE.DOWN_ARROW, Inches(11.19), Inches(ry + 1.10), Inches(0.24), Inches(0.24))
             d_arr.fill.solid()
             d_arr.fill.fore_color.rgb = _rgb(pal.s2)
             d_arr.line.fill.background()
@@ -614,7 +672,7 @@ def _build_mechanism_3col_flow(slide, spec: SlideSpec, deck: DeckSpec, pal: Scie
 def _build_data_dashboard_table(slide, spec: SlideSpec, deck: DeckSpec, pal: ScientificPalette, figure_renderer: Callable) -> None:
     ea_f, lat_f = _fonts(deck)
     add_rounded_box(slide, 0.40, 1.50, 7.58, 4.64, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True, name="L2_left_dashboard")
-    add_chamfered_header_tab(slide, 2.10, 1.36, 4.18, 0.30, "定量药代动力学指标与可编辑柱图", fill_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+    add_chamfered_header_tab(slide, 2.10, 1.36, 4.18, 0.30, "定量指标可视化看板与结构对照", fill_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
 
     kpis = spec.kpis[:3] or [
         {"value": "34–50%", "label": "大鼠口服生物利用度", "color_token": "s1"},
@@ -628,12 +686,29 @@ def _build_data_dashboard_table(slide, spec: SlideSpec, deck: DeckSpec, pal: Sci
         ctok = kp.color_token if hasattr(kp, "color_token") else kp.get("color_token", "s1")
         tx = 0.54 + idx * 2.48
         add_rounded_box(slide, tx, 1.84, tile_w, 0.88, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.08, shadow=True)
-        add_rect(slide, tx + 0.08, 1.96, 0.06, 0.64, fill_hex=pal.token(ctok), name=f"L2_kpi_bar_{idx}")
-        add_box_text(slide, tx + 0.16, 1.90, tile_w - 0.24, 0.42, val, size_pt=22.0, bold=True, color_hex=pal.token(ctok), align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
-        add_box_text(slide, tx + 0.16, 2.34, tile_w - 0.24, 0.34, lbl, size_pt=14.0, bold=False, color_hex=pal.muted, align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+        add_rect(slide, tx + 0.02, 1.84, tile_w - 0.04, 0.07, fill_hex=pal.token(ctok), name=f"L2_kpi_bar_{idx}")
+        add_box_text(slide, tx + 0.12, 1.93, tile_w - 0.24, 0.40, val, size_pt=21.0, bold=True, color_hex=pal.token(ctok), align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, tx + 0.12, 2.34, tile_w - 0.24, 0.34, lbl, size_pt=14.0, bold=False, color_hex=pal.muted, align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+
+    bars = extract_visual_metric_bars(spec, max_bars=4)
+    if bars:
+        fig_box = FigureBoxIn(left=0.54, top=2.86, width=4.02, height=3.16)
+        add_rounded_box(slide, 0.54, 2.86, 4.02, 3.16, fill_hex="#FFFFFF", border_hex="#E2E8F0", border_pt=0.75, radius=0.06)
+        add_rounded_box(slide, 4.68, 2.86, 3.16, 3.16, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True, name="L2_metric_bars_panel")
+        add_rect(slide, 4.70, 2.88, 3.12, 0.34, fill_hex=blend_with_white(pal.s1, 0.90))
+        add_box_text(slide, 4.78, 2.88, 2.96, 0.34, "关键指标柱状对比", size_pt=14.0, bold=True, color_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+        for b_i, (b_lbl, b_val, b_frac) in enumerate(bars):
+            by = 3.30 + b_i * 0.66
+            col_b = pal.s1 if b_i % 2 == 0 else pal.s2
+            add_box_text(slide, 4.78, by, 1.78, 0.28, b_lbl, size_pt=14.0, bold=False, color_hex=pal.ink, ea_font=ea_f, latin_font=lat_f)
+            add_box_text(slide, 6.58, by, 1.16, 0.28, b_val, size_pt=14.0, bold=True, color_hex=col_b, align=PP_ALIGN.RIGHT, ea_font=ea_f, latin_font=lat_f)
+            add_rounded_box(slide, 4.78, by + 0.32, 2.96, 0.16, fill_hex="#EDF2F7", border_hex=None, radius=0.45)
+            add_rounded_box(slide, 4.78, by + 0.32, max(0.32, 2.96 * b_frac), 0.16, fill_hex=col_b, border_hex=None, radius=0.45)
+    else:
+        fig_box = get_v5_figure_box(LayoutId.data_dashboard_table)
 
     if spec.figure_spec:
-        figure_renderer(slide, spec.figure_spec, pal, override_box=get_v5_figure_box(LayoutId.data_dashboard_table), ea_font=ea_f, latin_font=lat_f)
+        figure_renderer(slide, spec.figure_spec, pal, override_box=fig_box, ea_font=ea_f, latin_font=lat_f)
 
     td = spec.table_data
     table_bottom = 3.92
@@ -682,69 +757,101 @@ def _build_data_dashboard_table(slide, spec: SlideSpec, deck: DeckSpec, pal: Sci
 
 def _build_bg_top_summary_3box(slide, spec: SlideSpec, deck: DeckSpec, pal: ScientificPalette, figure_renderer: Callable) -> None:
     ea_f, lat_f = _fonts(deck)
-    add_rounded_box(slide, 0.40, 1.54, 12.53, 1.04, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True)
-    lines = spec.pain_points[:3] or [f"•  {ins.heading}：{ins.body}" for ins in spec.insights[:3]]
-    for idx, ln in enumerate(lines[:3]):
-        add_box_text(slide, 0.58, 1.58 + idx * 0.32, 12.16, 0.32, ln, size_pt=14.0, bold=False, color_hex=pal.ink, line_spacing=1.05, ea_font=ea_f, latin_font=lat_f)
+    top_tint = blend_with_white(pal.s6, 0.35)
+    add_rounded_box(slide, 0.40, 1.48, 12.53, 0.96, fill_hex=top_tint, border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True)
+    add_rounded_box(slide, 0.48, 1.56, 1.28, 0.80, fill_hex=pal.s1, border_hex=None, radius=0.10)
+    add_box_text(slide, 0.48, 1.56, 1.28, 0.80, "核心目标", size_pt=14.5, bold=True, color_hex="#FFFFFF", align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+
+    lines = spec.pain_points[:3] or [f"{ins.heading}：{ins.body}" for ins in spec.insights[:3]]
+    cols_n = max(1, min(3, len(lines)))
+    col_w = 10.90 / cols_n
+    for idx, ln in enumerate(lines[:cols_n]):
+        lx = 1.88 + idx * col_w
+        add_box_text(slide, lx + 0.06, 1.54, col_w - 0.12, 0.84, ln, size_pt=14.0, bold=False, color_hex=pal.ink, line_spacing=1.08, anchor=MSO_ANCHOR.MIDDLE, ea_font=ea_f, latin_font=lat_f)
+        if idx < cols_n - 1:
+            add_line(slide, lx + col_w, 1.62, lx + col_w, 2.30, color_hex="#CBD5E1", width_pt=0.8)
 
     boxes = [
         (0.40, 3.82, spec.left_cards[0].get("heading", "01 核心痛点") if spec.left_cards else "01 核心痛点"),
-        (4.50, 4.30, "02 多尺度科研图解"),
-        (9.08, 3.85, spec.right_chain[0].get("title", "03 研究目标") if spec.right_chain else "03 预期突破"),
+        (4.50, 4.30, "02 分子设计与机理"),
+        (9.08, 3.85, spec.right_chain[0].get("title", "03 预期突破") if spec.right_chain else "03 预期突破"),
     ]
     for bx, bw, btitle in boxes:
-        add_rounded_box(slide, bx, 2.74, bw, 3.36, fill_hex="#FFFFFF", border_hex=pal.s3, border_pt=1.0, dashed=True, radius=0.05, shadow=True)
-        add_chamfered_header_tab(slide, bx + 0.45, 2.64, bw - 0.90, 0.30, btitle, fill_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+        add_rounded_box(slide, bx, 2.64, bw, 3.46, fill_hex="#FFFFFF", border_hex=pal.s3, border_pt=1.0, dashed=True, radius=0.05, shadow=True)
+        add_chamfered_header_tab(slide, bx + 0.45, 2.52, bw - 0.90, 0.30, btitle, fill_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
 
     for ax in (4.24, 8.82):
-        arr = slide.shapes.add_shape(MSO_SHAPE.RIGHT_ARROW, Inches(ax), Inches(4.24), Inches(0.22), Inches(0.28))
+        arr = slide.shapes.add_shape(MSO_SHAPE.CHEVRON, Inches(ax), Inches(4.24), Inches(0.22), Inches(0.28))
         arr.fill.solid()
         arr.fill.fore_color.rgb = _rgb(pal.s1)
         arr.line.fill.background()
 
     for idx, ins in enumerate(spec.insights[:2]):
-        add_rounded_box(slide, 0.56, 3.16 + idx * 1.38, 3.50, 1.24, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True)
-        add_box_text(slide, 0.70, 3.22 + idx * 1.38, 3.22, 0.32, ins.heading, size_pt=14.5, bold=True, color_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
-        add_box_text(slide, 0.70, 3.56 + idx * 1.38, 3.22, 0.78, ins.body, size_pt=14.0, color_hex=pal.ink, line_spacing=1.08, anchor=MSO_ANCHOR.TOP, ea_font=ea_f, latin_font=lat_f)
+        cy = 3.04 + idx * 1.48
+        add_rounded_box(slide, 0.56, cy, 3.50, 1.32, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True)
+        num_c = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(0.68), Inches(cy + 0.12), Inches(0.30), Inches(0.30))
+        num_c.fill.solid()
+        num_c.fill.fore_color.rgb = _rgb(pal.s1 if idx == 0 else pal.s2)
+        num_c.line.fill.background()
+        add_box_text(slide, 0.68, cy + 0.12, 0.30, 0.30, f"0{idx + 1}", size_pt=14.0, bold=True, color_hex="#FFFFFF", align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, 1.06, cy + 0.10, 2.88, 0.34, ins.heading, size_pt=14.5, bold=True, color_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, 0.68, cy + 0.48, 3.26, 0.76, ins.body, size_pt=14.0, color_hex=pal.ink, line_spacing=1.08, anchor=MSO_ANCHOR.TOP, ea_font=ea_f, latin_font=lat_f)
 
-    r_items = spec.right_chain or [{"title": k.value, "body": k.label} for k in spec.kpis[:2]]
+    r_items = spec.right_chain or [{"title": k.value, "body": k.label} for k in spec.kpis[:2]] or [{"title": spec.takeaway[:14], "body": spec.section_name}]
     for idx, rc in enumerate(r_items[:2]):
-        add_rounded_box(slide, 9.24, 3.16 + idx * 1.38, 3.53, 1.24, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True)
-        add_box_text(slide, 9.38, 3.24 + idx * 1.38, 3.25, 0.34, rc.get("title", ""), size_pt=14.5, bold=True, color_hex=pal.s1, align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
-        add_box_text(slide, 9.38, 3.60 + idx * 1.38, 3.25, 0.72, rc.get("body", ""), size_pt=14.0, color_hex=pal.ink, align=PP_ALIGN.CENTER, line_spacing=1.08, anchor=MSO_ANCHOR.TOP, ea_font=ea_f, latin_font=lat_f)
+        cy = 3.04 + idx * 1.48
+        add_rounded_box(slide, 9.24, cy, 3.53, 1.32, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True)
+        add_rect(slide, 9.26, cy + 0.02, 3.49, 0.08, fill_hex=pal.s1 if idx == 0 else pal.s2)
+        add_box_text(slide, 9.38, cy + 0.16, 3.25, 0.36, rc.get("title", ""), size_pt=15.0, bold=True, color_hex=pal.s1, align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, 9.38, cy + 0.54, 3.25, 0.70, rc.get("body", ""), size_pt=14.0, color_hex=pal.ink, align=PP_ALIGN.CENTER, line_spacing=1.08, anchor=MSO_ANCHOR.TOP, ea_font=ea_f, latin_font=lat_f)
 
     if spec.figure_spec:
         figure_renderer(slide, spec.figure_spec, pal, override_box=get_v5_figure_box(LayoutId.bg_top_summary_3box), ea_font=ea_f, latin_font=lat_f)
+        eng = spec.figure_spec.assets[0].engine.value if spec.figure_spec.assets else ""
+        tag_l = "3D 空间构象" if eng == "cylview_3d" else "2D 化学结构"
+        tag_r = f"{spec.kpis[0].label}: {spec.kpis[0].value}"[:18] if spec.kpis else "核心药效骨架"
+        add_rounded_box(slide, 4.64, 5.64, 1.88, 0.34, fill_hex=top_tint, border_hex=pal.s4, border_pt=0.75, radius=0.28)
+        add_box_text(slide, 4.66, 5.64, 1.84, 0.34, tag_l, size_pt=14.0, bold=True, color_hex=pal.s1, align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+        add_rounded_box(slide, 6.62, 5.64, 2.04, 0.34, fill_hex=top_tint, border_hex=pal.s4, border_pt=0.75, radius=0.28)
+        add_box_text(slide, 6.64, 5.64, 2.00, 0.34, tag_r, size_pt=14.0, bold=True, color_hex=pal.ink, align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
 
 
 def _build_pain_points_left_arrows(slide, spec: SlideSpec, deck: DeckSpec, pal: ScientificPalette, figure_renderer: Callable) -> None:
     ea_f, lat_f = _fonts(deck)
-    pts = spec.pain_points or [f"{ins.heading}：{ins.body}" for ins in spec.insights[:4]]
-    n = min(4, max(2, len(pts)))
-    row_h = min(1.04, (4.48 - 0.14 * (n - 1)) / n)
-    for idx, pt in enumerate(pts[:4]):
-        ry = 1.56 + idx * (row_h + 0.14)
-        add_rounded_box(slide, 0.40, ry, 5.06, row_h, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.08, shadow=True)
-        add_rect(slide, 0.48, ry + 0.14, 0.06, row_h - 0.28, fill_hex=pal.s1)
-        add_box_text(slide, 0.64, ry + 0.06, 4.28, row_h - 0.12, pt, size_pt=14.0, color_hex=pal.ink, line_spacing=1.10, ea_font=ea_f, latin_font=lat_f)
-        circ = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(4.98), Inches(ry + row_h / 2 - 0.18), Inches(0.36), Inches(0.36))
+    pts = spec.pain_points or [f"{ins.heading}：{ins.body}" for ins in spec.insights[:3]]
+    n = min(3, max(2, len(pts)))
+    row_h = min(1.42, (4.58 - 0.14 * (n - 1)) / n)
+    for idx, pt in enumerate(pts[:n]):
+        ry = 1.54 + idx * (row_h + 0.14)
+        c_head, c_body = split_card_head_body(pt, f"关键痛点 0{idx + 1}")
+        add_rounded_box(slide, 0.40, ry, 5.06, row_h, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True)
+        add_rounded_box(slide, 0.40, ry, 5.06, 0.34, fill_hex=pal.s1 if idx % 2 == 0 else pal.s2, border_hex=None, radius=0.06)
+        add_box_text(slide, 0.54, ry, 4.78, 0.34, c_head, size_pt=14.0, bold=True, color_hex="#FFFFFF", ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, 0.54, ry + 0.38, 4.34, row_h - 0.44, c_body, size_pt=14.0, color_hex=pal.ink, line_spacing=1.08, anchor=MSO_ANCHOR.TOP, ea_font=ea_f, latin_font=lat_f)
+        cy_arr = ry + 0.34 + (row_h - 0.34) * 0.5 - 0.16
+        circ = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(4.98), Inches(cy_arr), Inches(0.34), Inches(0.34))
         circ.fill.solid()
         circ.fill.fore_color.rgb = _rgb(pal.s1)
         circ.line.fill.background()
-        add_box_text(slide, 4.98, ry + row_h / 2 - 0.18, 0.36, 0.36, "→", size_pt=14.0, bold=True, color_hex="#FFFFFF", align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, 4.98, cy_arr, 0.34, 0.34, "→", size_pt=14.0, bold=True, color_hex="#FFFFFF", align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
 
     add_rounded_box(slide, 5.66, 1.54, 7.27, 4.58, fill_hex="#FFFFFF", border_hex=pal.s3, border_pt=1.0, dashed=True, radius=0.05, shadow=True)
     add_chamfered_header_tab(slide, 7.46, 1.42, 3.68, 0.30, "关键科学问题与微界面机制", fill_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
 
+    # Top dashed problem callout strip inside right frame
+    add_rounded_box(slide, 5.82, 1.78, 6.94, 0.42, fill_hex=blend_with_white(pal.s6, 0.35), border_hex=pal.s3, border_pt=0.75, dashed=True, radius=0.10)
+    add_box_text(slide, 5.92, 1.78, 6.74, 0.42, f"核心瓶颈：{spec.takeaway[:36]}", size_pt=14.0, bold=True, color_hex=pal.s1, align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+
     if spec.figure_spec:
         figure_renderer(slide, spec.figure_spec, pal, override_box=get_v5_figure_box(LayoutId.pain_points_left_arrows), ea_font=ea_f, latin_font=lat_f)
 
-    chips = spec.figure_chips or ["限域调控", "低能垒", "高分散", "定量互证"]
+    chips = spec.figure_chips or ["限域调控", "低能垒", "高选择性", "定量互证"]
     cw = 6.94 / max(len(chips[:4]), 1)
     for idx, ch in enumerate(chips[:4]):
         cx = 5.82 + idx * cw
         add_rounded_box(slide, cx + 0.04, 5.18, cw - 0.08, 0.38, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.14, shadow=True)
-        add_box_text(slide, cx + 0.04, 5.18, cw - 0.08, 0.38, ch, size_pt=14.0, bold=True, color_hex=pal.ink, align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+        add_rect(slide, cx + 0.12, 5.26, 0.06, 0.22, fill_hex=pal.s1 if idx % 2 == 0 else pal.s2)
+        add_box_text(slide, cx + 0.18, 5.18, cw - 0.24, 0.38, ch, size_pt=14.0, bold=True, color_hex=pal.ink, align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
 
     note = spec.figure_bottom_note or spec.takeaway
     add_box_text(slide, 5.82, 5.64, 6.94, 0.40, note, size_pt=14.0, bold=True, color_hex=pal.alert, align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
@@ -759,12 +866,20 @@ def _build_fig_left_3step_chain(slide, spec: SlideSpec, deck: DeckSpec, pal: Sci
         figure_renderer(slide, spec.figure_spec, pal, override_box=get_v5_figure_box(LayoutId.fig_left_3step_chain), ea_font=ea_f, latin_font=lat_f)
 
     chain = spec.right_chain or [{"title": ins.heading, "body": ins.body} for ins in spec.insights[:3]]
+    soft_tint = blend_with_white(pal.s1, 0.90)
     for idx, item in enumerate(chain[:3]):
         ry = 1.56 + idx * 1.56
-        add_rounded_box(slide, 8.34, ry, 1.16, 1.24, fill_hex=pal.s1, border_hex=None, radius=0.08)
-        add_box_text(slide, 8.38, ry, 1.08, 1.24, item.get("title", f"阶段 {idx+1}"), size_pt=14.0, bold=True, color_hex="#FFFFFF", align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
-        add_rounded_box(slide, 9.58, ry, 3.35, 1.24, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.08, shadow=True)
-        add_box_text(slide, 9.70, ry + 0.08, 3.11, 1.08, item.get("body", ""), size_pt=14.0, color_hex=pal.ink, line_spacing=1.10, ea_font=ea_f, latin_font=lat_f)
+        add_rounded_box(slide, 8.34, ry, 1.24, 1.24, fill_hex=pal.s1 if idx % 2 == 0 else pal.s2, border_hex=None, radius=0.08)
+        badge = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(8.78), Inches(ry + 0.12), Inches(0.36), Inches(0.34))
+        badge.fill.solid()
+        badge.fill.fore_color.rgb = _rgb("#FFFFFF")
+        badge.line.fill.background()
+        add_box_text(slide, 8.78, ry + 0.12, 0.36, 0.34, f"0{idx + 1}", size_pt=14.0, bold=True, color_hex=pal.s1, align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, 8.38, ry + 0.50, 1.16, 0.68, item.get("title", f"阶段 {idx+1}"), size_pt=14.0, bold=True, color_hex="#FFFFFF", align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+
+        add_rounded_box(slide, 9.66, ry, 3.27, 1.24, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.08, shadow=True)
+        add_rect(slide, 9.66, ry + 0.10, 0.06, 1.04, fill_hex=soft_tint)
+        add_box_text(slide, 9.78, ry + 0.08, 3.04, 1.08, item.get("body", ""), size_pt=14.0, color_hex=pal.ink, line_spacing=1.08, ea_font=ea_f, latin_font=lat_f)
         if idx < 2:
             arr = slide.shapes.add_shape(MSO_SHAPE.DOWN_ARROW, Inches(10.50), Inches(ry + 1.27), Inches(0.32), Inches(0.26))
             arr.fill.solid()
@@ -774,46 +889,122 @@ def _build_fig_left_3step_chain(slide, spec: SlideSpec, deck: DeckSpec, pal: Sci
 
 def _build_vs_center_wing(slide, spec: SlideSpec, deck: DeckSpec, pal: ScientificPalette, figure_renderer: Callable) -> None:
     ea_f, lat_f = _fonts(deck)
-    l_cards = spec.left_cards or [{"heading": "传统路径 / 对照", "body": ins.body} for ins in spec.insights[:2]]
-    r_cards = spec.right_chain or [{"title": "创新策略 / 优势", "body": k.label + " " + k.value} for k in spec.kpis[:2]]
+    l_cards = spec.left_cards or [{"heading": ins.heading or "传统路径", "body": ins.body} for ins in spec.insights[:2]]
+    r_cards = spec.right_chain or [{"title": k.label, "body": k.value} for k in spec.kpis[:2]] or [{"title": "核心优势", "body": spec.takeaway}]
 
     for idx, lc in enumerate(l_cards[:2]):
         cy = 1.58 + idx * 2.26
-        add_rounded_box(slide, 0.40, cy, 3.20, 2.08, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.08, shadow=True)
-        add_chamfered_header_tab(slide, 0.72, cy - 0.12, 2.56, 0.30, lc.get("heading", ""), fill_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
-        add_box_text(slide, 0.54, cy + 0.34, 2.92, 1.62, lc.get("body", ""), size_pt=14.0, color_hex=pal.ink, line_spacing=1.12, anchor=MSO_ANCHOR.TOP, ea_font=ea_f, latin_font=lat_f)
+        add_rounded_box(slide, 0.40, cy, 3.12, 2.08, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True)
+        add_rounded_box(slide, 0.40, cy, 3.12, 0.36, fill_hex=pal.s2, border_hex=None, radius=0.06)
+        add_box_text(slide, 0.48, cy, 2.96, 0.36, lc.get("heading", ""), size_pt=14.0, bold=True, color_hex="#FFFFFF", align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, 0.54, cy + 0.44, 2.84, 1.54, lc.get("body", ""), size_pt=14.0, color_hex=pal.ink, line_spacing=1.10, anchor=MSO_ANCHOR.TOP, ea_font=ea_f, latin_font=lat_f)
+        arr_l = slide.shapes.add_shape(MSO_SHAPE.RIGHT_ARROW, Inches(3.55), Inches(cy + 0.90), Inches(0.18), Inches(0.26))
+        arr_l.fill.solid()
+        arr_l.fill.fore_color.rgb = _rgb(pal.s2)
+        arr_l.line.fill.background()
 
     add_rounded_box(slide, 3.76, 1.54, 5.80, 4.58, fill_hex="#FFFFFF", border_hex=pal.s3, border_pt=1.0, dashed=True, radius=0.06, shadow=True)
+    add_chamfered_header_tab(slide, 4.96, 1.40, 3.40, 0.30, "核心结构与机制对比", fill_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
     if spec.figure_spec:
         figure_renderer(slide, spec.figure_spec, pal, override_box=get_v5_figure_box(LayoutId.vs_center_wing), ea_font=ea_f, latin_font=lat_f)
+    add_rounded_box(slide, 4.06, 5.62, 5.20, 0.38, fill_hex=blend_with_white(pal.s6, 0.35), border_hex=pal.s4, border_pt=0.75, radius=0.24)
+    add_box_text(slide, 4.16, 5.62, 5.00, 0.38, "⇄  结构演进与定量性能双向印证", size_pt=14.0, bold=True, color_hex=pal.s1, align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
 
     for idx, rc in enumerate(r_cards[:2]):
         cy = 1.58 + idx * 2.26
-        add_rounded_box(slide, 9.72, cy, 3.21, 2.08, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.08, shadow=True)
-        add_chamfered_header_tab(slide, 10.04, cy - 0.12, 2.56, 0.30, rc.get("title", ""), fill_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
-        add_box_text(slide, 9.86, cy + 0.34, 2.93, 1.62, rc.get("body", ""), size_pt=14.0, color_hex=pal.ink, line_spacing=1.12, anchor=MSO_ANCHOR.TOP, ea_font=ea_f, latin_font=lat_f)
+        add_rounded_box(slide, 9.81, cy, 3.12, 2.08, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True)
+        add_rounded_box(slide, 9.81, cy, 3.12, 0.36, fill_hex=pal.s1, border_hex=None, radius=0.06)
+        add_box_text(slide, 9.89, cy, 2.96, 0.36, rc.get("title", ""), size_pt=14.0, bold=True, color_hex="#FFFFFF", align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, 9.95, cy + 0.44, 2.84, 1.54, rc.get("body", ""), size_pt=14.0, color_hex=pal.ink, line_spacing=1.10, anchor=MSO_ANCHOR.TOP, ea_font=ea_f, latin_font=lat_f)
+        arr_r = slide.shapes.add_shape(MSO_SHAPE.LEFT_ARROW, Inches(9.59), Inches(cy + 0.90), Inches(0.18), Inches(0.26))
+        arr_r.fill.solid()
+        arr_r.fill.fore_color.rgb = _rgb(pal.s1)
+        arr_r.line.fill.background()
 
 
 def _build_roadmap_layered_matrix(slide, spec: SlideSpec, deck: DeckSpec, pal: ScientificPalette, figure_renderer: Callable) -> None:
     ea_f, lat_f = _fonts(deck)
-    row_tags = ["研究目标", "技术路线", "验证方案"]
-    for idx, tag in enumerate(row_tags):
-        ry = 1.54 + idx * 1.54
-        add_rounded_box(slide, 0.40, ry, 0.82, 1.38, fill_hex=pal.s1, border_hex=None, radius=0.08)
-        add_box_text(slide, 0.42, ry, 0.78, 1.38, tag, size_pt=14.0, bold=True, color_hex="#FFFFFF", align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
-        add_rounded_box(slide, 1.30, ry, 7.58, 1.38, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True)
+    rows_geom = [
+        (1.52, 1.30, "研究目标"),
+        (2.94, 1.82, "技术路线"),
+        (4.88, 1.24, "核心指标"),
+    ]
+    for ry, rh, tag in rows_geom:
+        add_rounded_box(slide, 0.40, ry, 0.82, rh, fill_hex=pal.s1, border_hex=None, radius=0.08)
+        add_box_text(slide, 0.42, ry, 0.78, rh, tag, size_pt=14.0, bold=True, color_hex="#FFFFFF", align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+        add_rounded_box(slide, 1.30, ry, 7.58, rh, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True)
 
+    # Row 1: 3 Horizontal Process Cards
+    row1_items = spec.insights[:3] or [InsightItem(index="01", heading="目标聚焦", body=spec.takeaway[:24])]
+    for idx, ins in enumerate(row1_items):
+        cx = 1.42 + idx * 2.48
+        add_rounded_box(slide, cx, 1.62, 2.26, 1.10, fill_hex=blend_with_white(pal.s6, 0.40), border_hex="#D6E0EC", border_pt=0.75, radius=0.06)
+        add_rounded_box(slide, cx + 0.08, 1.68, 2.10, 0.30, fill_hex=pal.s1 if idx == 0 else pal.s2, border_hex=None, radius=0.10)
+        add_box_text(slide, cx + 0.12, 1.68, 2.02, 0.30, f"{ins.index} {ins.heading[:8]}", size_pt=14.0, bold=True, color_hex="#FFFFFF", align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, cx + 0.08, 2.02, 2.10, 0.64, ins.body[:26], size_pt=14.0, color_hex=pal.ink, line_spacing=1.05, anchor=MSO_ANCHOR.TOP, ea_font=ea_f, latin_font=lat_f)
+        if idx < len(row1_items) - 1:
+            arr = slide.shapes.add_shape(MSO_SHAPE.RIGHT_ARROW, Inches(cx + 2.29), Inches(2.06), Inches(0.16), Inches(0.22))
+            arr.fill.solid()
+            arr.fill.fore_color.rgb = _rgb(pal.s1)
+            arr.line.fill.background()
+
+    # Row 2: Left structure box + Right 2-step experimental flow blocks
     if spec.figure_spec:
         figure_renderer(slide, spec.figure_spec, pal, override_box=get_v5_figure_box(LayoutId.roadmap_layered_matrix), ea_font=ea_f, latin_font=lat_f)
+    wf_steps = [
+        ("设计合成与骨架修饰", spec.insights[0].body[:22] if spec.insights else "构建代表分子与路线"),
+        ("表征验证与性能评估", spec.insights[-1].body[:22] if spec.insights else "活性、选择性与构象"),
+    ]
+    for idx, (wt, wb) in enumerate(wf_steps):
+        wy = 3.04 + idx * 0.94
+        add_rounded_box(slide, 5.22, wy, 3.52, 0.68, fill_hex="#FFFFFF", border_hex=pal.s3, border_pt=0.85, radius=0.08)
+        add_rect(slide, 5.28, wy + 0.08, 0.06, 0.52, fill_hex=pal.s1 if idx == 0 else pal.s2)
+        add_box_text(slide, 5.42, wy + 0.04, 3.24, 0.30, wt, size_pt=14.0, bold=True, color_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, 5.42, wy + 0.34, 3.24, 0.30, wb, size_pt=14.0, color_hex=pal.muted, ea_font=ea_f, latin_font=lat_f)
+        if idx == 0:
+            da = slide.shapes.add_shape(MSO_SHAPE.DOWN_ARROW, Inches(6.88), Inches(wy + 0.71), Inches(0.22), Inches(0.20))
+            da.fill.solid()
+            da.fill.fore_color.rgb = _rgb(pal.s2)
+            da.line.fill.background()
 
+    # Row 3: 3 Metric / Deliverable Badges
+    row3_kpis = (
+        [(k.value, k.label, pal.token(k.color_token)) for k in spec.kpis[:3]]
+        if spec.kpis
+        else [(ins.highlight or ins.heading[:8], ins.heading[:12], pal.s1 if i % 2 == 0 else pal.s2) for i, ins in enumerate(spec.insights[:3])]
+    )
+    if not row3_kpis:
+        row3_kpis = [("目标达成", "阶段验证", pal.s1)]
+    r3_w = 7.34 / max(len(row3_kpis), 1) - 0.10
+    for idx, (mv, ml, mc) in enumerate(row3_kpis[:3]):
+        mx = 1.42 + idx * (r3_w + 0.14)
+        add_rounded_box(slide, mx, 4.98, r3_w, 1.04, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06)
+        add_rect(slide, mx + 0.02, 5.00, r3_w - 0.04, 0.06, fill_hex=mc)
+        add_box_text(slide, mx + 0.08, 5.10, r3_w - 0.16, 0.44, str(mv)[:12], size_pt=18.0, bold=True, color_hex=mc, align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, mx + 0.08, 5.56, r3_w - 0.16, 0.36, str(ml)[:14], size_pt=14.0, color_hex=pal.ink, align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+
+    # Right vertical milestone flow
     add_rounded_box(slide, 9.06, 1.54, 3.87, 4.58, fill_hex="#FFFFFF", border_hex="#D6E0EC", border_pt=0.75, radius=0.06, shadow=True)
     add_chamfered_header_tab(slide, 9.72, 1.39, 2.55, 0.30, "闭环实施与转化路径", fill_hex=pal.s1, ea_font=ea_f, latin_font=lat_f)
 
     nodes = spec.right_chain or [{"title": ins.heading, "body": ""} for ins in spec.insights[:3]] + [{"title": "定量成果产出", "body": ""}]
     for idx, nd in enumerate(nodes[:4]):
-        ny = 2.02 + idx * 0.98
-        add_rounded_box(slide, 9.30, ny, 3.39, 0.68, fill_hex="#FFFFFF", border_hex=pal.s1 if idx == 3 else "#D6E0EC", border_pt=1.0 if idx == 3 else 0.75, radius=0.45, shadow=True)
-        add_box_text(slide, 9.42, ny, 3.15, 0.68, nd.get("title", ""), size_pt=14.0, bold=True, color_hex=pal.s1 if idx == 3 else pal.ink, align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+        ny = 1.94 + idx * 1.04
+        is_last = idx == min(len(nodes[:4]), 4) - 1
+        add_rounded_box(slide, 9.26, ny, 3.47, 0.72, fill_hex=pal.s1 if is_last else "#FFFFFF", border_hex=pal.s1 if is_last else "#D6E0EC", border_pt=0.85, radius=0.45, shadow=True)
+        num_bg = "#FFFFFF" if is_last else pal.s1
+        num_fg = pal.s1 if is_last else "#FFFFFF"
+        nc = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(9.38), Inches(ny + 0.17), Inches(0.38), Inches(0.38))
+        nc.fill.solid()
+        nc.fill.fore_color.rgb = _rgb(num_bg)
+        nc.line.fill.background()
+        add_box_text(slide, 9.38, ny + 0.17, 0.38, 0.38, f"0{idx + 1}", size_pt=14.0, bold=True, color_hex=num_fg, align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+        add_box_text(slide, 9.84, ny, 2.76, 0.72, nd.get("title", ""), size_pt=14.0, bold=True, color_hex="#FFFFFF" if is_last else pal.ink, align=PP_ALIGN.CENTER, ea_font=ea_f, latin_font=lat_f)
+        if not is_last:
+            da_r = slide.shapes.add_shape(MSO_SHAPE.DOWN_ARROW, Inches(10.88), Inches(ny + 0.75), Inches(0.24), Inches(0.24))
+            da_r.fill.solid()
+            da_r.fill.fore_color.rgb = _rgb(pal.s2)
+            da_r.line.fill.background()
 
 
 _V5_DISPATCH = {

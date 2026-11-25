@@ -46,6 +46,7 @@ export const SlideCanvasPreview: React.FC<SlideCanvasPreviewProps> = ({
   onUpdateCoverTemplate,
 }) => {
   const [showNotes, setShowNotes] = useState(false);
+  const [zoomOpen, setZoomOpen] = useState(false);
   const curLatin = deck.locked_standards?.fonts?.latin || "Arial";
   const curEa = deck.locked_standards?.fonts?.ea || "微软雅黑";
   const curFontId = FONT_PRESETS.find((f) => f.latin === curLatin && f.ea === curEa)?.id || "arial_msyh";
@@ -66,7 +67,7 @@ export const SlideCanvasPreview: React.FC<SlideCanvasPreviewProps> = ({
       <div
         style={{
           width: "100%",
-          maxWidth: 960,
+          maxWidth: 1120,
           margin: "0 auto",
           display: "flex",
           flexWrap: "wrap",
@@ -130,7 +131,18 @@ export const SlideCanvasPreview: React.FC<SlideCanvasPreviewProps> = ({
           )}
         </div>
 
-        <div style={{ display: "inline-flex", border: "1px solid #D5D1C8", borderRadius: 2, overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {previewUrl && (
+            <button
+              type="button"
+              className="btn-editorial-ghost"
+              onClick={() => setZoomOpen(true)}
+              style={{ fontSize: 11.5, padding: "4px 10px" }}
+            >
+              高清放大
+            </button>
+          )}
+          <div style={{ display: "inline-flex", border: "1px solid #D5D1C8", borderRadius: 2, overflow: "hidden" }}>
           {[
             { id: "L1", label: "L1 图" },
             { id: "L2", label: "L2 框" },
@@ -158,11 +170,14 @@ export const SlideCanvasPreview: React.FC<SlideCanvasPreviewProps> = ({
             );
           })}
         </div>
+        </div>
       </div>
 
       {/* 16:9 Slide Preview */}
-      <div style={{ width: "100%", maxWidth: 960, margin: "0 auto", flexShrink: 0 }}>
+      <div style={{ width: "100%", maxWidth: 1120, margin: "0 auto", flexShrink: 0 }}>
         <div
+          onClick={() => previewUrl && setZoomOpen(true)}
+          title={previewUrl ? "点击高清全屏查看" : undefined}
           style={{
             width: "100%",
             aspectRatio: "16 / 9",
@@ -174,6 +189,7 @@ export const SlideCanvasPreview: React.FC<SlideCanvasPreviewProps> = ({
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
+            cursor: previewUrl ? "zoom-in" : "default",
           }}
         >
           {previewUrl ? (
@@ -193,7 +209,7 @@ export const SlideCanvasPreview: React.FC<SlideCanvasPreviewProps> = ({
       <div
         style={{
           width: "100%",
-          maxWidth: 960,
+          maxWidth: 1120,
           margin: "0 auto",
           flexShrink: 0,
           background: "var(--surface-pure)",
@@ -245,6 +261,39 @@ export const SlideCanvasPreview: React.FC<SlideCanvasPreviewProps> = ({
           />
         )}
       </div>
+
+      {zoomOpen && previewUrl && (
+        <div
+          onClick={() => setZoomOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.85)",
+            zIndex: 80,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 24,
+            cursor: "zoom-out",
+          }}
+        >
+          <img
+            src={previewUrl}
+            alt={`Slide ${slide.slide_no} HD`}
+            style={{
+              maxWidth: "94vw",
+              maxHeight: "88vh",
+              objectFit: "contain",
+              background: "#FFFFFF",
+              boxShadow: "0 24px 64px rgba(0, 0, 0, 0.55)",
+            }}
+          />
+          <div className="font-mono" style={{ color: "#E2E8F0", fontSize: 12, marginTop: 10 }}>
+            1920 × 1080 FULL HD · 点击任意空白处关闭
+          </div>
+        </div>
+      )}
     </main>
   );
 };

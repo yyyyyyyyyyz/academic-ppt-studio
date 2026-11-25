@@ -21,11 +21,11 @@ from .v5_cover_renderer import (
 from .v5_renderer import render_v5_slide_preview, render_v5_toc_preview
 
 
-SCALE_PX_PER_IN = 96.0  # 13.333 * 96 = 1280 x 720 crisp preview
+SCALE_PX_PER_IN = 144.0  # 13.333 * 144 = 1920 x 1080 Full-HD crisp preview
 
 
 def _load_font(size_pt: float, bold: bool = False, is_latin: bool = False) -> ImageFont.FreeTypeFont:
-    px = max(12, int(round(size_pt * 1.3333)))
+    px = max(12, int(round(size_pt * (SCALE_PX_PER_IN / 72.0))))
     return resolve_pil_font(px, is_cjk=not is_latin, bold=bold)
 
 
@@ -53,7 +53,7 @@ def _draw_wrapped_text(
         # Switch cleanly to Microsoft YaHei if caller requested Latin font on mixed CJK string
         font_sz = font.size if hasattr(font, "size") else 18
         bold_guess = "bd" in str(getattr(font, "path", "")).lower()
-        font = _load_font(font_sz / 1.3333, bold=bold_guess, is_latin=False)
+        font = _load_font(font_sz / (SCALE_PX_PER_IN / 72.0), bold=bold_guess, is_latin=False)
     lines: List[str] = []
     for raw_ln in clean.split("\n"):
         if not raw_ln:
@@ -113,7 +113,7 @@ def render_slide_preview_png(
         v5_out = render_v5_slide_preview(spec, deck, output_png, layers=layers)
         if v5_out is not None:
             return v5_out
-    w, h = 1280, 720
+    w, h = 1920, 1080
     canvas = Image.new("RGBA", (w, h), (255, 255, 255, 255))
     draw = ImageDraw.Draw(canvas)
     pal = get_palette(deck.meta.palette_id)
