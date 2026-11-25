@@ -178,6 +178,16 @@ class FigureCriticAgent:
             # Deterministic RDKit/CYLview/Origin/Vector engines guarantee zero text hallucination & exact typography
             aesthetic = round(0.40 * comp + 0.35 * harmony + 0.25 * max(alpha_score, 9.0), 2)
             aesthetic = max(aesthetic, 8.95) if scientific_ok else 5.0
+        elif asset.engine == EngineType.uploaded_image:
+            # Researcher-supplied experimental / Word-extracted figures may have white backgrounds & custom colors
+            with Image.open(png_p) as im_chk:
+                uw, uh = im_chk.size
+            if uw >= 80 and uh >= 80 and scientific_ok:
+                aesthetic = max(round(0.35 * comp + 0.65 * 9.2, 2), 8.85)
+                diagnostics.append("Validated researcher-provided / manuscript-extracted figure.")
+            else:
+                aesthetic = 6.5
+                diagnostics.append(f"Uploaded image resolution too small ({uw}x{uh}).")
         else:
             aesthetic = round(0.38 * alpha_score + 0.32 * harmony + 0.30 * comp, 2)
             if ocr_count > 0:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import List, Optional
 
 from ..builder.v5_layouts import get_v5_figure_box
@@ -260,9 +261,9 @@ class ArtDirectorAgent:
             return (ArchetypeId.A02, None, None)
         if any(k in txt for k in ("压电", "光催", "声", "外场", "piezo", "photo")):
             return (ArchetypeId.A03, None, None)
-        if any(k in txt for k in ("立体", "配合物", "构象", "3d", "cylview")):
+        if any(k in txt for k in ("立体", "配合物", "构象", "对接", "口袋", "变构", "3d", "cylview")):
             return (ArchetypeId.A04, None, None)
-        if any(k in txt for k in ("合成", "背景", "痛点", "药", "底物", "chemdraw", "c–n")):
+        if any(k in txt for k in ("合成", "背景", "痛点", "药", "抑制剂", "骨架", "先导", "sar", "构效", "底物", "chemdraw", "c–n")):
             return (ArchetypeId.A05, None, None) if content_index % 2 == 0 else (ArchetypeId.A01, None, None)
         if any(k in txt for k in ("循环", "机理", "催化", "能垒")):
             return (ArchetypeId.A10, None, "dual_cycle")
@@ -298,6 +299,8 @@ class ArtDirectorAgent:
         return rotation[content_index % len(rotation)]
 
     def _choose_v5_layout(self, slide: SlideSpec, is_proposal: bool, content_index: int) -> LayoutId:
+        if slide.table_data is not None:
+            return LayoutId.data_dashboard_table
         txt = f"{slide.section_name} {slide.title} {slide.takeaway}".lower()
         if any(k in txt for k in ("文献", "综述", "演进", "构效", "sar")):
             return LayoutId.lit_overview_dual_card
@@ -334,36 +337,61 @@ class ArtDirectorAgent:
 
         if slide.layout_id == LayoutId.lit_overview_dual_card:
             if not slide.profile_card:
+                derived_metrics = [(k.label, k.value) for k in slide.kpis[:3]]
+                if not derived_metrics:
+                    derived_metrics = [
+                        (ins.heading[:12], (ins.highlight or ins.body[:14]))
+                        for ins in slide.insights[:2]
+                    ]
                 slide.profile_card = {
                     "journal_badge": "KEY STUDY · 文献档案",
                     "paper_title": slide.title,
                     "authors": slide.footer_left,
-                    "metrics": [(k.label, k.value) for k in slide.kpis[:3]] or [("核心指标", "高选择性"), ("绿色度", "显著提升")],
+                    "metrics": derived_metrics or [("研究主题", slide.section_name[:12])],
                     "focus_text": slide.takeaway,
                 }
         elif slide.layout_id == LayoutId.mechanism_3col_flow:
             if not slide.chevron_steps:
-                slide.chevron_steps = ["01 底物活化", "02 限域预组织", "03 中间体转化", "04 高效选择生成"]
+                slide.chevron_steps = [
+                    f"{i + 1:02d} {ins.heading[:8]}" for i, ins in enumerate(slide.insights[:4])
+                ] or ["01 核心问题", "02 关键发现", "03 机理阐明"]
             if not slide.left_cards:
                 slide.left_cards = [{"heading": ins.heading, "body": ins.body} for ins in slide.insights[:3]]
             if not slide.right_chain:
-                slide.right_chain = [{"title": k.value, "body": k.label} for k in slide.kpis[:2]] + [{"title": "协同降垒", "body": "显著加速关键反应步骤"}]
+                tail_ins = slide.insights[-1] if slide.insights else None
+                slide.right_chain = [{"title": k.value, "body": k.label} for k in slide.kpis[:2]] + [
+                    {
+                        "title": tail_ins.heading[:10] if tail_ins else "关键结论",
+                        "body": (tail_ins.body if tail_ins else slide.takeaway)[:30],
+                    }
+                ]
             if not slide.bottom_banner:
-                slide.bottom_banner = {"mode": "triple_pill", "left": "结构精确预组织", "center": slide.title[:18], "right": "稳定高效循环"}
+                left_lbl = slide.insights[0].heading[:10] if slide.insights else slide.section_name[:10]
+                right_lbl = (
+                    f"{slide.kpis[0].label} {slide.kpis[0].value}"[:16]
+                    if slide.kpis
+                    else (slide.insights[-1].highlight or "定量与机制互证")[:16]
+                )
+                slide.bottom_banner = {
+                    "mode": "triple_pill",
+                    "left": left_lbl,
+                    "center": slide.title[:18],
+                    "right": right_lbl,
+                }
         elif slide.layout_id == LayoutId.data_dashboard_table:
             if not slide.table_data:
+                summary_rows = [[k.label[:14], k.value[:16]] for k in slide.kpis[:3]]
+                for ins in slide.insights[:3]:
+                    if len(summary_rows) >= 4:
+                        break
+                    summary_rows.append([ins.heading[:14], (ins.highlight or ins.body[:20])])
                 slide.table_data = TableData(
-                    headers=["评价指标", "常规体系", "本工作"],
-                    rows=[
-                        ["分离收率", "62.4%", "91.2%"],
-                        ["PMI 减废", "58.2", "4.8"],
-                        ["反应时长", "12 h", "45 min"],
-                        ["循环稳定性", "3 次", "8 次 (98%)"],
-                    ],
+                    headers=["关键维度", "核心数据 / 发现"],
+                    rows=summary_rows or [[slide.section_name[:14], slide.takeaway[:24]]],
                 )
             if not slide.strategy_cards:
                 slide.strategy_cards = [
-                    {"badge": "性能突破", "badge_color": "#00468B", "title": ins.heading, "body": ins.body}
+                    {"badge": "要点解析", "badge_color": "#00468B", "title": ins.heading, "body": ins.body}
                     for ins in slide.insights[:2]
                 ]
         elif slide.layout_id in (LayoutId.bg_top_summary_3box, LayoutId.fig_left_3step_chain):
@@ -384,6 +412,8 @@ class ArtDirectorAgent:
         detected_smiles: Optional[List[str]] = None,
         content_index: int = 0,
         design_style: DesignStyle = DesignStyle.defense_modular,
+        section_smiles: Optional[List[str]] = None,
+        section_images: Optional[List[str]] = None,
     ) -> SlideSpec:
         if slide.slide_type == SlideType.cover:
             slide.figure_spec = build_default_figure_spec(
@@ -401,7 +431,11 @@ class ArtDirectorAgent:
             return slide
 
         arch, preset, mech_mode = self._choose_archetype_and_preset(slide, is_proposal=is_proposal, content_index=content_index)
-        smiles = detected_smiles[0] if detected_smiles else None
+        smiles: Optional[str] = None
+        if section_smiles:
+            smiles = section_smiles[0]
+        elif detected_smiles:
+            smiles = detected_smiles[content_index % len(detected_smiles)]
 
         if design_style != DesignStyle.zero_fill_frameless:
             slide.layout_id = self._choose_v5_layout(slide, is_proposal=is_proposal, content_index=content_index)
@@ -419,6 +453,25 @@ class ArtDirectorAgent:
                 box = FigureBoxIn(left=0.46, top=1.68, width=12.40, height=4.10)
             else:
                 box = FigureBoxIn(left=0.46, top=1.68, width=7.75, height=4.42)
+
+        valid_word_imgs = [p for p in (section_images or []) if p and Path(p).is_file()]
+        if valid_word_imgs:
+            slide.figure_spec = FigureSpec(
+                figure_id=f"fig_{slide.slide_no:02d}",
+                archetype=arch,
+                visual_story_scale="word_embedded_figure",
+                box_in=box,
+                assets=[
+                    FigureAsset(
+                        asset_id=f"fig_{slide.slide_no:02d}_word_img",
+                        engine=EngineType.uploaded_image,
+                        png_path=valid_word_imgs[0],
+                        label=slide.section_name[:22],
+                    )
+                ],
+                caption=f"Fig. {slide.slide_no}  {slide.section_name}（提取自原始文稿插图）",
+            )
+            return slide
 
         fig_spec = build_default_figure_spec(
             archetype=arch,

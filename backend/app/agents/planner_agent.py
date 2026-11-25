@@ -1,9 +1,9 @@
-"""Planner Agent — Parses Documents into DeckSpec v4.0 with Free Slide Count & Notes Offloading."""
+"""Planner Agent — Parses Documents into DeckSpec v4.0 with Free Slide Count, Notes Offloading & Faithfull Zero-LLM Mode."""
 
 from __future__ import annotations
 
-import math
-from typing import Any, Dict, List, Optional
+import re
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..providers.llm_image_provider import ModelProvider
 from ..schemas.deck_spec import (
@@ -17,23 +17,189 @@ from ..schemas.deck_spec import (
     ScenarioType,
     SlideSpec,
     SlideType,
+    TableData,
 )
 from .art_director_agent import ArtDirectorAgent
-from .doc_parser import ParsedDocument, parse_scientific_text
+from .doc_parser import (
+    ParsedDocument,
+    ParsedSection,
+    clean_prose_without_smiles,
+    parse_scientific_text,
+)
 
 
 _CANONICAL_TOPICS = [
-    ("研究背景与立题痛点", "BACKGROUND & RATIONALE", "传统均相高稀释体系过程废液多且能耗高，亟需绿色高效的催化新策略。"),
-    ("国内外研究进展与空白", "STATE OF ART & GAP", "现有报道难以兼顾高分散稳定性与低能垒活化，跨尺度协同调控仍是空白。"),
-    ("总体技术路线与实验设计", "RESEARCH ROADMAP", "构建“材料限域设计—多场协同反应—原位机理互证—定量放大”四阶段闭环。"),
-    ("多尺度装置与微观界⾯", "MULTI-SCALE INTERFACE", "宏观剪切传质与介孔限域微环境协同作用，高效富集底物并锁定副产分子。"),
-    ("催化双循环与分子机理", "CATALYTIC MECHANISM", "双中心氧化还原耦合降低关键决速步活化能垒，避免传统高温副反应。"),
-    ("催化剂分散性与抗团聚调控", "DISPERSION & STABILITY", "多孔骨架空间限域锚定单分散活性中心，显著抑制循环过程中的团聚失活。"),
-    ("催化效率与绿色度定量对比", "QUANTITATIVE PERFORMANCE", "在温和条件下分离收率达 91.2%，过程质量强度 PMI 较对照工艺降低 91.7%。"),
-    ("表征谱学与电子态解析", "SPECTROSCOPIC PROOF", "原位 XPS 与动力学同位素效应证实高价金属活性中间体稳定调控电荷转移。"),
-    ("DFT 能垒与构效预测模型", "THEORETICAL INSIGHTS", "理论计算与机器学习模型揭示反应自由能降幅与电子结构描述符呈强线性相关。"),
-    ("总结、创新点与未来展望", "SUMMARY & OUTLOOK", "形成可推广的绿色合成范式，下一步将拓展连续流工艺与临床前药物分子库验证。"),
+    ("研究背景与立题痛点", "BACKGROUND & RATIONALE", "梳理领域关键科学瓶颈与临床/工艺痛点，明确立题依据。"),
+    ("国内外研究进展与空白", "STATE OF ART & GAP", "对比既有文献体系边界，确立本课题核心突破方向。"),
+    ("总体技术路线与实验设计", "RESEARCH ROADMAP", "构建多阶段递进式实验设计与表征验证闭环。"),
+    ("分子设计与构效关系优化", "MOLECULAR DESIGN", "围绕靶点结合模式与成药性指标完成先导结构迭代。"),
+    ("作用机理与表征互证", "MECHANISTIC INSIGHTS", "结合结构表征与动力学分析阐明核心反应与结合机制。"),
+    ("定量性能与综合评价", "QUANTITATIVE PERFORMANCE", "系统汇总活性、选择性及稳定性定量对照数据。"),
+    ("总结、创新点与未来展望", "SUMMARY & OUTLOOK", "凝练核心学术创新点并规划下一阶段深化验证路径。"),
 ]
+
+_LEAD_FILLER_PAT = re.compile(r"^(?:因此|进一步|随后|此外|同时|相较(?:于)?|基于此|研究表明|结果表明|实验显示)[，,\s]*")
+_HEADING_BREAK_PAT = re.compile(r"[：:，,]|\s*(?:表明|显示|采用|建立|实现|达到|证实|提出|发现|揭示|保持|诱导)\s*")
+
+
+def _split_clean_sentences(sec: ParsedSection) -> List[str]:
+    """Split a ParsedSection into clean, SMILES-stripped informative sentences."""
+    raw_paras = sec.paragraphs if sec.paragraphs else sec.content.splitlines()
+    sentences: List[str] = []
+    for para in raw_paras:
+        cleaned = clean_prose_without_smiles(para)
+        if not cleaned:
+            continue
+        parts = re.split(r"[。！？；;\n]+", cleaned)
+        for part in parts:
+            s = part.strip(" ，,;；:：")
+            if len(s) >= 8:
+                sentences.append(s)
+    return sentences
+
+
+def _derive_heading_from_sentence(sentence: str, fallback_idx: int) -> str:
+    """Extract a concise 4–12 char Chinese/English heading directly from the sentence."""
+    stripped = _LEAD_FILLER_PAT.sub("", sentence.strip())
+    chunks = _HEADING_BREAK_PAT.split(stripped, maxsplit=1)
+    head = chunks[0].strip() if chunks else stripped
+    if len(head) > 13:
+        head = head[:12].rstrip("的与和及 ")
+    if len(head) < 3:
+        head = f"要点 {fallback_idx:02d}"
+    return head
+
+
+def _derive_highlight_from_sentence(sentence: str, metrics: List[Tuple[str, str]]) -> Optional[str]:
+    """Pick a high-signal numeric metric or concise clause directly present in the sentence."""
+    for val, _ in metrics:
+        if val and val in sentence:
+            return val[:12]
+    m_num = re.search(r"(-?\d+(?:\.\d+)?\s*(?:%|倍|nM|μM|h|mol%|ppm|kcal/mol|mg/kg|ns))", sentence)
+    if m_num:
+        return m_num.group(1).strip()[:12]
+    m_eng = re.search(r"([A-Za-z][A-Za-z0-9\-/]{2,11})", sentence)
+    if m_eng:
+        return m_eng.group(1)
+    return sentence[:8] if len(sentence) >= 6 else None
+
+
+def _truncate_clean(text: str, max_len: int) -> str:
+    if len(text) <= max_len:
+        return text
+    cut = text[:max_len]
+    for sep in ("，", "、", "：", ",", ";", " "):
+        pos = cut.rfind(sep)
+        if pos >= max_len // 2:
+            return cut[:pos].rstrip("，、：,; ") + "。"
+    return cut.rstrip("，、：,; ") + "…"
+
+
+def _build_deterministic_slide_fields(
+    sec: ParsedSection,
+    c_idx: int,
+) -> Tuple[str, List[KpiItem], List[InsightItem], Optional[TableData]]:
+    """Build faithful slide takeaway, real KPIs, real insights, and Word table with zero hardcoded fake data."""
+    sentences = _split_clean_sentences(sec)
+    metrics = sec.metrics
+
+    # 1. Takeaway: prefer sentence containing numeric evidence or conclusion verbs
+    best_sent = sentences[0] if sentences else clean_prose_without_smiles(sec.heading)
+    for sent in sentences:
+        if any(k in sent for k in ("表明", "实现", "达到", "降低", "提升", "发现", "亟需", "IC50", "%", "倍")):
+            best_sent = sent
+            break
+    takeaway = _truncate_clean(best_sent, 48)
+    if takeaway and not takeaway.endswith(("。", "…", ".", "!", "？")):
+        takeaway += "。"
+
+    # 2. KPIs strictly from extracted numbers in this section (never fabricate)
+    kpis: List[KpiItem] = []
+    for idx, (val, lbl) in enumerate(metrics[:2]):
+        kpis.append(KpiItem(value=val, label=lbl, color_token="s1" if idx == 0 else "alert"))
+
+    # 3. Insights strictly from real sentences of this section
+    insights: List[InsightItem] = []
+    for i, sent in enumerate(sentences[:3]):
+        heading = _derive_heading_from_sentence(sent, i + 1)
+        body = _truncate_clean(sent, 44)
+        if not body.endswith(("。", "…", ".")):
+            body += "。"
+        insights.append(
+            InsightItem(
+                index=f"0{i + 1}",
+                heading=heading,
+                body=body,
+                highlight=_derive_highlight_from_sentence(sent, metrics),
+            )
+        )
+    if not insights:
+        clean_title = clean_prose_without_smiles(sec.heading)
+        insights.append(
+            InsightItem(
+                index="01",
+                heading=clean_title[:12] or f"板块 {c_idx + 1:02d}",
+                body=takeaway or f"围绕{clean_title}开展系统分析与表征验证。",
+                highlight=clean_title[:8] if clean_title else None,
+            )
+        )
+
+    # 4. Real Word table if attached to this section
+    table_data: Optional[TableData] = None
+    if sec.tables:
+        tbl = sec.tables[0]
+        table_data = TableData(
+            headers=[h[:18] for h in tbl.headers[:5]],
+            rows=[[c[:22] for c in r[:5]] for r in tbl.rows[:6]],
+        )
+
+    return takeaway, kpis, insights, table_data
+
+
+def _expand_sections_to_count(sections: List[ParsedSection], target_count: int) -> List[ParsedSection]:
+    """If requested content slides exceed section count, sub-split longest real sections before padding."""
+    expanded = list(sections)
+    if not expanded or len(expanded) >= target_count:
+        return expanded
+
+    while len(expanded) < target_count:
+        # Pick longest section with >= 2 paragraphs or sentences
+        best_idx = -1
+        best_len = 0
+        for i, sec in enumerate(expanded):
+            sents = _split_clean_sentences(sec)
+            if len(sents) >= 2 and len(sec.content) > best_len:
+                best_len = len(sec.content)
+                best_idx = i
+        if best_idx < 0:
+            break
+        src = expanded[best_idx]
+        sents = _split_clean_sentences(src)
+        mid = max(1, len(sents) // 2)
+        first_sents = sents[:mid]
+        second_sents = sents[mid:]
+        first_text = "。".join(first_sents) + "。"
+        second_text = "。".join(second_sents) + "。"
+        sec_a = ParsedSection(
+            heading=src.heading,
+            content=first_text,
+            paragraphs=first_sents,
+            tables=[],
+            image_paths=list(src.image_paths[:1]),
+            smiles=list(src.smiles[:1]),
+            metrics=src.metrics[:2],
+        )
+        sec_b = ParsedSection(
+            heading=f"{src.heading[:16]}（续）",
+            content=second_text,
+            paragraphs=second_sents,
+            tables=list(src.tables),
+            image_paths=list(src.image_paths[1:] if len(src.image_paths) > 1 else []),
+            smiles=list(src.smiles[1:] if len(src.smiles) > 1 else src.smiles),
+            metrics=src.metrics[2:] or src.metrics[:2],
+        )
+        expanded[best_idx : best_idx + 1] = [sec_a, sec_b]
+    return expanded
 
 
 class PlannerAgent:
@@ -108,8 +274,9 @@ class PlannerAgent:
         cover_template: Optional[CoverTemplateId] = None,
         advisor: str = "",
         date_str: str = "",
+        parsed_doc: Optional[ParsedDocument] = None,
     ) -> DeckSpec:
-        doc = parse_scientific_text(source_text, default_title=deck_title or "绿色催化与分子精准合成研究汇报")
+        doc = parsed_doc or parse_scientific_text(source_text, default_title=deck_title or "绿色催化与分子精准合成研究汇报")
         final_title = deck_title.strip() if deck_title and deck_title.strip() else doc.title
         proposal_flag = doc.is_proposal_hint if is_proposal is None else is_proposal
 
@@ -118,19 +285,19 @@ class PlannerAgent:
         num_content = sum(1 for item in seq if item == "content")
 
         llm_slides = self._try_llm_content_outline(doc, num_content, scenario, proposal_flag)
+        planned_sections = _expand_sections_to_count(doc.sections, num_content) if not llm_slides else doc.sections
 
         slides: List[SlideSpec] = []
         content_cursor = 0
         toc_titles: List[str] = []
 
-        # Pre-compute TOC titles from sections or canonical topics
         for idx in range(min(4, max(3, len(doc.sections)))):
             if idx < len(doc.sections):
                 toc_titles.append(doc.sections[idx].heading)
             else:
                 toc_titles.append(_CANONICAL_TOPICS[idx][0])
 
-        part_names = ["研究背景与立题依据", "研究方案与技术路线", "机理与核心进展", "总结与未来规划"]
+        part_names = [sec.heading[:16] for sec in doc.sections[:4]] or ["研究背景与立题依据", "研究方案与技术路线", "机理与核心进展", "总结与未来规划"]
 
         for s_no, slot in enumerate(seq, start=1):
             if slot == "cover":
@@ -143,18 +310,27 @@ class PlannerAgent:
                     takeaway="原子级图/文全分离可编辑学术报告",
                     speaker_notes=f"开场致谢并介绍课题总体背景：{final_title}。",
                 )
-                slides.append(self.art_director.direct_slide(cover_spec, palette_id=palette_id, is_proposal=proposal_flag, detected_smiles=doc.detected_smiles))
+                slides.append(
+                    self.art_director.direct_slide(
+                        cover_spec,
+                        palette_id=palette_id,
+                        is_proposal=proposal_flag,
+                        detected_smiles=doc.detected_smiles,
+                    )
+                )
             elif slot == "toc":
-                slides.append(SlideSpec(
-                    slide_no=s_no,
-                    slide_type=SlideType.toc,
-                    layout_id=LayoutId.toc,
-                    eyebrow="CONTENTS · REPORT OUTLINE",
-                    title="汇报提纲与逻辑框架",
-                    takeaway="围绕科学痛点、机制假说、定量互证与转化前景展开系统汇报。",
-                    toc_items=toc_titles,
-                    speaker_notes="简要概览本次汇报的四大核心板块与时间分配。",
-                ))
+                slides.append(
+                    SlideSpec(
+                        slide_no=s_no,
+                        slide_type=SlideType.toc,
+                        layout_id=LayoutId.toc,
+                        eyebrow="CONTENTS · REPORT OUTLINE",
+                        title="汇报提纲与逻辑框架",
+                        takeaway="围绕科学痛点、机制假说、定量互证与转化前景展开系统汇报。",
+                        toc_items=toc_titles,
+                        speaker_notes="简要概览本次汇报的核心板块与时间分配。",
+                    )
+                )
             elif slot.startswith("part_"):
                 p_idx = int(slot.split("_")[1]) - 1
                 p_title = part_names[p_idx % len(part_names)]
@@ -170,63 +346,82 @@ class PlannerAgent:
                     ["催化机理", "定量互证", "结构解析"],
                     ["核心结论", "创新亮点", "转化前景"],
                 ]
-                slides.append(SlideSpec(
-                    slide_no=s_no,
-                    slide_type=SlideType.part_divider,
-                    layout_id=LayoutId.part_divider,
-                    eyebrow=f"PART 0{p_idx + 1}",
-                    title=p_title,
-                    takeaway=p_subs[p_idx % len(p_subs)],
-                    figure_chips=p_chips[p_idx % len(p_chips)],
-                ))
+                slides.append(
+                    SlideSpec(
+                        slide_no=s_no,
+                        slide_type=SlideType.part_divider,
+                        layout_id=LayoutId.part_divider,
+                        eyebrow=f"PART 0{p_idx + 1}",
+                        title=p_title,
+                        takeaway=p_subs[p_idx % len(p_subs)],
+                        figure_chips=p_chips[p_idx % len(p_chips)],
+                    )
+                )
             elif slot == "closing":
-                slides.append(SlideSpec(
-                    slide_no=s_no,
-                    slide_type=SlideType.closing,
-                    layout_id=LayoutId.closing,
-                    eyebrow="THANK YOU",
-                    title="敬请各位专家批评指正",
-                    takeaway=f"{author} · {affiliation}",
-                    speaker_notes="感谢各位评审专家聆听，欢迎就反应机理与实验方案提问交流。",
-                ))
+                slides.append(
+                    SlideSpec(
+                        slide_no=s_no,
+                        slide_type=SlideType.closing,
+                        layout_id=LayoutId.closing,
+                        eyebrow="THANK YOU",
+                        title="敬请各位专家批评指正",
+                        takeaway=f"{author} · {affiliation}",
+                        speaker_notes="感谢各位评审专家聆听，欢迎就反应机理与实验方案提问交流。",
+                    )
+                )
             else:
                 c_idx = content_cursor
                 content_cursor += 1
+                sec = planned_sections[c_idx] if c_idx < len(planned_sections) else None
+                sec_table: Optional[TableData] = None
+                sec_smiles = sec.smiles if sec else None
+                sec_images = sec.image_paths if sec else None
+
                 if llm_slides and c_idx < len(llm_slides):
                     raw_s = llm_slides[c_idx]
-                    sec_name = raw_s.get("section_name", f"专题 {c_idx + 1}")
+                    sec_name = raw_s.get("section_name", sec.heading if sec else f"专题 {c_idx + 1}")
                     eyebrow = raw_s.get("eyebrow", f"SECTION {c_idx + 1:02d}")
                     title = raw_s.get("title", sec_name)[:28]
                     takeaway = raw_s.get("takeaway", "")[:46]
-                    kpis = [KpiItem(value=k.get("value", "90%"), label=k.get("label", "指标"), color_token="s1" if i == 0 else "alert") for i, k in enumerate(raw_s.get("kpis", [])[:2])]
+                    kpis = [
+                        KpiItem(
+                            value=k.get("value", "—"),
+                            label=k.get("label", "核心指标"),
+                            color_token="s1" if i == 0 else "alert",
+                        )
+                        for i, k in enumerate(raw_s.get("kpis", [])[:2])
+                    ]
                     insights = [
                         InsightItem(
                             index=ins.get("index", f"0{i + 1}"),
                             heading=ins.get("heading", "核心发现")[:14],
-                            body=ins.get("body", "简洁阐述核心科学依据。")[:32],
+                            body=ins.get("body", "简洁阐述核心科学依据。")[:40],
                             highlight=ins.get("highlight"),
                         )
                         for i, ins in enumerate(raw_s.get("insights", [])[:3])
                     ]
                     notes = raw_s.get("speaker_notes", "")
-                else:
-                    sec = doc.sections[c_idx] if c_idx < len(doc.sections) else None
-                    canon_title, canon_eye, canon_take = _CANONICAL_TOPICS[c_idx % len(_CANONICAL_TOPICS)]
-                    sec_name = sec.heading if sec else canon_title
+                    if sec and sec.tables:
+                        tbl = sec.tables[0]
+                        sec_table = TableData(headers=[h[:18] for h in tbl.headers[:5]], rows=[[c[:22] for c in r[:5]] for r in tbl.rows[:6]])
+                elif sec is not None:
+                    sec_name = sec.heading
+                    canon_eye = _CANONICAL_TOPICS[c_idx % len(_CANONICAL_TOPICS)][1]
                     eyebrow = f"SECTION {c_idx + 1:02d} · {canon_eye}"
-                    title = sec_name[:26] if sec and len(sec.heading) >= 4 else canon_title
-                    clean_content = " ".join(ln for ln in sec.content.splitlines() if not ln.strip().upper().startswith("SMILES:")) if sec else ""
-                    takeaway = (clean_content[:42].rstrip("，。 ") + "。") if len(clean_content) > 12 else canon_take
-                    kpis = (
-                        [KpiItem(value="SOP 4 步", label="无中途开罐", color_token="s1"), KpiItem(value="4 项", label="固态表征矩阵", color_token="s2")]
-                        if proposal_flag
-                        else [KpiItem(value="91.2%", label="目标产物收率", color_token="s1"), KpiItem(value="-91.7%", label="溶剂减废幅度", color_token="alert")]
-                    )
+                    title = sec_name[:26]
+                    takeaway, kpis, insights, sec_table = _build_deterministic_slide_fields(sec, c_idx)
+                    notes = clean_prose_without_smiles(sec.content) or f"详细讲解{title}。"
+                else:
+                    canon_title, canon_eye, canon_take = _CANONICAL_TOPICS[c_idx % len(_CANONICAL_TOPICS)]
+                    sec_name = canon_title
+                    eyebrow = f"SECTION {c_idx + 1:02d} · {canon_eye}"
+                    title = canon_title
+                    takeaway = canon_take
+                    kpis = []
                     insights = [
-                        InsightItem(index="01", heading="科学机制锚点", body="微观限域微环境显著降低反应活化能垒。", highlight="降低反应活化能垒"),
-                        InsightItem(index="02", heading="表征与定量互证", body="分子结构与动力学曲线在同色标下精准对齐。", highlight="同色标下精准对齐"),
+                        InsightItem(index="01", heading=canon_title[:10], body=canon_take, highlight=canon_title[:6]),
                     ]
-                    notes = sec.content if sec else f"详细讲解{title}的实验条件、对照设计及文献溯源。"
+                    notes = f"详细讲解{title}的实验条件、对照设计及文献溯源。"
 
                 slide = SlideSpec(
                     slide_no=s_no,
@@ -236,8 +431,9 @@ class PlannerAgent:
                     eyebrow=eyebrow,
                     title=title,
                     takeaway=takeaway,
-                    kpis=kpis if c_idx % 2 == 0 else [],
+                    kpis=kpis if (kpis and (c_idx % 2 == 0 or sec_table is not None)) else kpis[:1],
                     insights=insights,
+                    table_data=sec_table,
                     footer_left=f"{final_title[:28]} · {scenario.value}",
                     speaker_notes=notes,
                 )
@@ -249,6 +445,8 @@ class PlannerAgent:
                         detected_smiles=doc.detected_smiles,
                         content_index=c_idx,
                         design_style=design_style,
+                        section_smiles=sec_smiles,
+                        section_images=sec_images,
                     )
                 )
 

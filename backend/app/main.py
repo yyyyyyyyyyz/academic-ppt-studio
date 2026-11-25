@@ -33,7 +33,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from .agents.art_director_agent import build_default_figure_spec
-from .agents.doc_parser import parse_file_to_text
+from .agents.doc_parser import ParsedDocument, parse_document_file
 from .agents.planner_agent import PlannerAgent
 from .agents.qa_agent import SlideVisualQAAgent
 from .billing import BillingError, BillingStore, default_billing_db_path
@@ -423,10 +423,15 @@ def api_cover_templates() -> Dict[str, object]:
     return {"cover_templates": COVER_TEMPLATE_CATALOG}
 
 
-@app.post("/api/plan")
-def api_plan(req: PlanRequest, request: Request) -> Dict[str, object]:
-    deck_id = f"deck_{uuid.uuid4().hex[:8]}"
-    d_dir = _deck_dir(deck_id)
+def _run_plan(
+    req: PlanRequest,
+    request: Request,
+    *,
+    parsed_doc: Optional[ParsedDocument] = None,
+    deck_id: Optional[str] = None,
+) -> Dict[str, object]:
+    active_deck_id = deck_id or f"deck_{uuid.uuid4().hex[:8]}"
+    d_dir = _deck_dir(active_deck_id)
     req_settings, provider, billing_info = _resolve_request_provider(request, consume_for_plan=True)
     try:
         planner = PlannerAgent(provider=provider)
@@ -439,11 +444,12 @@ def api_plan(req: PlanRequest, request: Request) -> Dict[str, object]:
             target_slide_count=req.target_slide_count,
             palette_id=req.palette_id,
             is_proposal=req.is_proposal,
-            deck_id=deck_id,
+            deck_id=active_deck_id,
             design_style=req.design_style,
             cover_template=req.cover_template,
             advisor=req.advisor,
             date_str=req.date_str,
+            parsed_doc=parsed_doc,
         )
 
         factory = ScientificFigureFactory(settings=req_settings, provider=provider)
@@ -480,6 +486,11 @@ def api_plan(req: PlanRequest, request: Request) -> Dict[str, object]:
     }
 
 
+@app.post("/api/plan")
+def api_plan(req: PlanRequest, request: Request) -> Dict[str, object]:
+    return _run_plan(req, request)
+
+
 @app.post("/api/plan/upload")
 async def api_plan_upload(
     request: Request,
@@ -500,11 +511,16 @@ async def api_plan_upload(
     d_dir = _deck_dir(deck_id)
     upload_p = d_dir / f"source_{Path(file.filename or 'input.txt').name}"
     _save_upload_limited(file, upload_p)
-    text = parse_file_to_text(upload_p)
+    fallback_title = (deck_title or "").strip() or Path(file.filename or "学术研究工作汇报").stem
+    parsed_doc = parse_document_file(
+        upload_p,
+        image_output_dir=d_dir / "word_images",
+        default_title=fallback_title,
+    )
 
     req = PlanRequest(
-        source_text=text,
-        deck_title=deck_title,
+        source_text=parsed_doc.raw_text,
+        deck_title=deck_title or parsed_doc.title,
         author=author,
         affiliation=affiliation,
         advisor=advisor,
@@ -516,7 +532,7 @@ async def api_plan_upload(
         design_style=design_style,
         cover_template=cover_template,
     )
-    return api_plan(req, request)
+    return _run_plan(req, request, parsed_doc=parsed_doc, deck_id=deck_id)
 
 
 def _collect_asset_urls(deck: DeckSpec) -> Dict[str, object]:
