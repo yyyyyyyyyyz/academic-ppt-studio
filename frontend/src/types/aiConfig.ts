@@ -1,9 +1,10 @@
-export type AiProviderMode = "local" | "openai" | "gemini";
+export type AiProviderMode = "hosted" | "local" | "openai" | "gemini";
 
 export interface AiConfig {
   presetId: string;
   provider: AiProviderMode;
   apiKey: string;
+  accessCode: string;
   baseUrl: string;
   model: string;
 }
@@ -21,6 +22,16 @@ export interface AiPreset {
 
 export const AI_PRESETS: AiPreset[] = [
   {
+    id: "hosted",
+    name: "官方 Pro 学术模型",
+    badge: "兑换码即用",
+    description: "站长托管大模型深度精读 Word/PDF 论文并生成讲稿，输入兑换码免配 API Key",
+    provider: "hosted",
+    baseUrl: "",
+    model: "官方托管模型",
+    keyPlaceholder: "输入兑换码，如 PRO-XXXX-XXXX",
+  },
+  {
     id: "local",
     name: "本地确定性引擎",
     badge: "免费离线",
@@ -33,7 +44,7 @@ export const AI_PRESETS: AiPreset[] = [
   {
     id: "deepseek",
     name: "DeepSeek",
-    badge: "推荐",
+    badge: "自带 Key",
     description: "性价比极高，擅长文献结构提取与学术大纲规划（¥0.01–0.05/篇）",
     provider: "openai",
     baseUrl: "https://api.deepseek.com/v1",
@@ -76,6 +87,7 @@ export const DEFAULT_AI_CONFIG: AiConfig = {
   presetId: "local",
   provider: "local",
   apiKey: "",
+  accessCode: "",
   baseUrl: "",
   model: "",
 };
@@ -88,13 +100,17 @@ export function loadAiConfig(): AiConfig {
     if (!raw) return DEFAULT_AI_CONFIG;
     const parsed = JSON.parse(raw) as Partial<AiConfig>;
     const provider: AiProviderMode =
-      parsed.provider === "openai" || parsed.provider === "gemini" || parsed.provider === "local"
+      parsed.provider === "hosted" ||
+      parsed.provider === "openai" ||
+      parsed.provider === "gemini" ||
+      parsed.provider === "local"
         ? parsed.provider
         : "local";
     return {
       presetId: parsed.presetId || provider,
       provider,
       apiKey: typeof parsed.apiKey === "string" ? parsed.apiKey : "",
+      accessCode: typeof parsed.accessCode === "string" ? parsed.accessCode : "",
       baseUrl: typeof parsed.baseUrl === "string" ? parsed.baseUrl : "",
       model: typeof parsed.model === "string" ? parsed.model : "",
     };
@@ -111,12 +127,30 @@ export function saveAiConfig(cfg: AiConfig): void {
   }
 }
 
+export function isHostedAiActive(cfg: AiConfig): boolean {
+  return cfg.provider === "hosted" && cfg.accessCode.trim().length > 0;
+}
+
 export function isCloudAiActive(cfg: AiConfig): boolean {
-  return cfg.provider !== "local" && cfg.apiKey.trim().length > 0;
+  return isHostedAiActive(cfg) || (cfg.provider !== "local" && cfg.provider !== "hosted" && cfg.apiKey.trim().length > 0);
 }
 
 export function buildAiHeaders(cfg?: AiConfig): Record<string, string> {
   const active = cfg || loadAiConfig();
+  if (active.provider === "hosted") {
+    const code = active.accessCode.trim();
+    if (!code) {
+      return {
+        "X-LLM-Provider": "local",
+        "X-Figure-Provider": "local",
+      };
+    }
+    return {
+      "X-LLM-Provider": "hosted",
+      "X-Access-Code": code,
+      "X-Figure-Provider": "local",
+    };
+  }
   if (active.provider === "local" || !active.apiKey.trim()) {
     return {
       "X-LLM-Provider": "local",

@@ -29,13 +29,14 @@ COPY skill/ /app/skill/
 COPY --from=frontend-builder /build/frontend/dist /app/frontend/dist
 
 RUN useradd -m -u 1000 appuser \
-    && mkdir -p /app/artifacts/decks /tmp/mpl_academic_ppt \
+    && mkdir -p /app/artifacts/decks /app/data /tmp/mpl_academic_ppt \
     && chown -R 1000:1000 /app /tmp/mpl_academic_ppt
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app/backend \
     MPLCONFIGDIR=/tmp/mpl_academic_ppt \
+    BILLING_DB_PATH=/app/data/billing.db \
     LLM_PROVIDER_MODE=auto \
     FIGURE_PROVIDER_MODE=local \
     DECK_TTL_HOURS=24 \

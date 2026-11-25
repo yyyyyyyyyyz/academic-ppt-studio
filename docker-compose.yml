@@ -7,8 +7,16 @@ services:
     restart: unless-stopped
     ports:
       - "80:8080"
+    volumes:
+      - billing_data:/app/data
     environment:
       - PORT=8080
+      - BILLING_DB_PATH=/app/data/billing.db
+      - ADMIN_SECRET=${ADMIN_SECRET:-}
+      - REQUIRE_CODE_FOR_HOSTED=${REQUIRE_CODE_FOR_HOSTED:-true}
+      - OFFICIAL_MODEL_LABEL=${OFFICIAL_MODEL_LABEL:-官方 Pro 学术精读模型}
+      - OFFICIAL_PURCHASE_NOTE=${OFFICIAL_PURCHASE_NOTE:-请联系站长获取官方 AI 次数兑换码（支持免费本地引擎或自带 API Key）}
+      - OFFICIAL_PLAN_COST=${OFFICIAL_PLAN_COST:-1}
       - LLM_PROVIDER_MODE=${LLM_PROVIDER_MODE:-auto}
       - FIGURE_PROVIDER_MODE=${FIGURE_PROVIDER_MODE:-local}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
@@ -17,3 +25,6 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - DECK_TTL_HOURS=${DECK_TTL_HOURS:-24}
       - MAX_UPLOAD_MB=${MAX_UPLOAD_MB:-20}
+
+volumes:
+  billing_data:

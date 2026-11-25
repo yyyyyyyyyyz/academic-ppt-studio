@@ -18,21 +18,25 @@ Implements all endpoints in Spec Section 6.4:
 
 from __future__ import annotations
 
+from dataclasses import replace
+import hmac
 import os
 import shutil
 import time
 import uuid
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 
 from .agents.art_director_agent import build_default_figure_spec
 from .agents.doc_parser import parse_file_to_text
 from .agents.planner_agent import PlannerAgent
 from .agents.qa_agent import SlideVisualQAAgent
+from .billing import BillingError, BillingStore, default_billing_db_path
 from .builder.word_sync import sync_word_into_pptx
 from .config import Settings, get_settings
 from .figure_factory.factory import ScientificFigureFactory
@@ -56,6 +60,7 @@ from .schemas.deck_spec import (
 
 
 settings = get_settings(ensure_dirs=False)
+billing_store = BillingStore(default_billing_db_path(settings.repo_root))
 app = FastAPI(title="Academic PPT Design Studio API", version="4.0.0")
 
 _RAW_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "*").strip()
@@ -187,25 +192,219 @@ def _frontend_dist_dir() -> Path:
     return settings.repo_root / "frontend" / "dist"
 
 
-def _request_provider(request: Request) -> Tuple[Settings, ModelProvider]:
+class RedeemCheckRequest(BaseModel):
+    code: str = ""
+
+
+class AdminGenerateCodesRequest(BaseModel):
+    count: int = Field(default=5, ge=1, le=100)
+    credits: int = Field(default=5, ge=1, le=10000)
+    prefix: str = Field(default="PRO", max_length=12)
+    label: str = Field(default="", max_length=80)
+    valid_days: Optional[int] = Field(default=None, ge=1, le=3650)
+
+
+class AdminRevokeCodeRequest(BaseModel):
+    code: str
+    active: bool = False
+
+
+def _admin_secret() -> str:
+    return os.environ.get("ADMIN_SECRET", "").strip()
+
+
+def _require_code_for_hosted() -> bool:
+    return os.environ.get("REQUIRE_CODE_FOR_HOSTED", "true").strip().lower() not in {"0", "false", "no"}
+
+
+def _official_plan_cost() -> int:
+    try:
+        return max(1, int(os.environ.get("OFFICIAL_PLAN_COST", "1")))
+    except ValueError:
+        return 1
+
+
+def _official_model_label() -> str:
+    custom = os.environ.get("OFFICIAL_MODEL_LABEL", "").strip()
+    if custom:
+        return custom
+    backend = ModelProvider(settings).active_text_backend()
+    if backend == "gemini":
+        return f"官方 Pro · {settings.gemini_text_model}"
+    if backend == "openai":
+        return f"官方 Pro · {settings.openai_text_model}"
+    return "官方 Pro 学术精读模型"
+
+
+def _official_purchase_note() -> str:
+    return os.environ.get(
+        "OFFICIAL_PURCHASE_NOTE",
+        "联系站长获取官方 AI 次数兑换码；也可免费使用本地确定性引擎或自带 API Key。",
+    ).strip()
+
+
+def _verify_admin(request: Request) -> None:
+    configured = _admin_secret()
+    if not configured:
+        raise HTTPException(
+            status_code=503,
+            detail="管理员密钥未配置：请在服务器 .env 中设置 ADMIN_SECRET 后再使用发码管理。",
+        )
+    supplied = request.headers.get("x-admin-secret", "").strip()
+    if not supplied or not hmac.compare_digest(supplied, configured):
+        raise HTTPException(status_code=403, detail="管理员密钥错误，无权操作卡密。")
+
+
+def _resolve_request_provider(
+    request: Request,
+    *,
+    consume_for_plan: bool = False,
+    validate_hosted_code: bool = False,
+) -> Tuple[Settings, ModelProvider, Optional[Dict[str, Any]]]:
+    hdr_provider = request.headers.get("x-llm-provider", "").strip().lower()
+    hdr_key = request.headers.get("x-llm-api-key", "").strip()
+    hdr_code = request.headers.get("x-access-code", "").strip()
+
+    if hdr_provider == "hosted":
+        server_backend = ModelProvider(settings).active_text_backend()
+        if server_backend == "local":
+            raise HTTPException(
+                status_code=503,
+                detail="站长尚未在服务器配置官方大模型 API，请先切回「本地确定性引擎」或使用自带 API Key。",
+            )
+        cost = _official_plan_cost()
+        try:
+            if consume_for_plan:
+                info = billing_store.consume(hdr_code, amount=cost, action="plan_deck")
+            elif validate_hosted_code:
+                info = billing_store.validate_for_use(hdr_code, amount=cost)
+            else:
+                info = billing_store.validate_for_use(hdr_code, amount=1)
+        except BillingError as exc:
+            raise HTTPException(status_code=402, detail=exc.message) from exc
+
+        hosted_settings = replace(settings, figure_provider_mode="local")
+        receipt = {
+            "mode": "hosted",
+            "code": info["code"],
+            "cost": cost if consume_for_plan else 0,
+            "credits_left": info["credits_left"],
+            "credits_total": info["credits_total"],
+        }
+        return hosted_settings, ModelProvider(hosted_settings), receipt
+
+    if hdr_key and hdr_provider in {"openai", "gemini", "auto", ""}:
+        req_settings = settings_from_request_headers(settings, request.headers)
+        return req_settings, ModelProvider(req_settings), None
+
+    if _require_code_for_hosted():
+        local_only = replace(settings, llm_provider_mode="local", figure_provider_mode="local")
+        return local_only, ModelProvider(local_only), None
+
     req_settings = settings_from_request_headers(settings, request.headers)
-    return req_settings, ModelProvider(req_settings)
+    return req_settings, ModelProvider(req_settings), None
+
+
+def _request_provider(request: Request) -> Tuple[Settings, ModelProvider]:
+    req_settings, provider, _ = _resolve_request_provider(request, consume_for_plan=False)
+    return req_settings, provider
 
 
 @app.get("/api/health")
 def health() -> Dict[str, object]:
+    server_backend = ModelProvider(settings).active_text_backend()
     return {
         "status": "ok",
         "version": "4.0.0",
         "artifacts_root": str(settings.artifacts_root),
-        "server_llm_backend": ModelProvider(settings).active_text_backend(),
+        "server_llm_backend": server_backend,
+        "hosted_ai_enabled": server_backend != "local",
         "frontend_bundled": (_frontend_dist_dir() / "index.html").exists(),
     }
 
 
+@app.get("/api/billing/status")
+def api_billing_status() -> Dict[str, object]:
+    server_backend = ModelProvider(settings).active_text_backend()
+    return {
+        "hosted_ai_enabled": server_backend != "local",
+        "hosted_backend": server_backend,
+        "model_label": _official_model_label(),
+        "purchase_note": _official_purchase_note(),
+        "plan_cost": _official_plan_cost(),
+        "require_code_for_hosted": _require_code_for_hosted(),
+    }
+
+
+@app.post("/api/billing/redeem-check")
+def api_billing_redeem_check(req: RedeemCheckRequest) -> Dict[str, object]:
+    info = billing_store.get_code(req.code)
+    if info is None:
+        return {
+            "valid": False,
+            "code": req.code.strip().upper(),
+            "credits_left": 0,
+            "credits_total": 0,
+            "active": False,
+            "expired": False,
+            "label": "",
+            "expires_at": None,
+            "message": "兑换码不存在，请核对输入是否完整。",
+        }
+    msg = "兑换码有效"
+    if not info["active"]:
+        msg = "该兑换码已被停用"
+    elif info["expired"]:
+        msg = "该兑换码已过期"
+    elif info["credits_left"] <= 0:
+        msg = "该兑换码次数已用完"
+    else:
+        msg = f"兑换码有效，剩余 {info['credits_left']} / {info['credits_total']} 次"
+    return {**info, "message": msg}
+
+
+@app.post("/api/admin/codes/generate")
+def api_admin_generate_codes(req: AdminGenerateCodesRequest, request: Request) -> Dict[str, object]:
+    _verify_admin(request)
+    created = billing_store.create_codes(
+        count=req.count,
+        credits=req.credits,
+        prefix=req.prefix,
+        label=req.label,
+        valid_days=req.valid_days,
+    )
+    return {"codes": created}
+
+
+@app.get("/api/admin/codes")
+def api_admin_list_codes(request: Request, limit: int = 100) -> Dict[str, object]:
+    _verify_admin(request)
+    codes = billing_store.list_codes(limit=limit)
+    return {"codes": codes, "total": len(codes)}
+
+
+@app.post("/api/admin/codes/revoke")
+def api_admin_revoke_code(req: AdminRevokeCodeRequest, request: Request) -> Dict[str, object]:
+    _verify_admin(request)
+    ok = billing_store.set_active(req.code, req.active)
+    if not ok:
+        raise HTTPException(status_code=404, detail="兑换码不存在")
+    return {"ok": True, "code": req.code.strip().upper(), "active": req.active}
+
+
 @app.post("/api/llm/test")
 def api_llm_test(request: Request) -> Dict[str, object]:
-    _, provider = _request_provider(request)
+    hdr_provider = request.headers.get("x-llm-provider", "").strip().lower()
+    if hdr_provider == "hosted":
+        _, provider, billing_info = _resolve_request_provider(request, validate_hosted_code=True)
+        res = provider.test_connection()
+        if billing_info:
+            res["credits_left"] = billing_info["credits_left"]
+            res["credits_total"] = billing_info["credits_total"]
+            if res.get("ok"):
+                res["message"] = f"{_official_model_label()} 连通成功，兑换码剩余 {billing_info['credits_left']} 次"
+        return res
+    _, provider, _ = _resolve_request_provider(request)
     return provider.test_connection()
 
 
@@ -228,38 +427,47 @@ def api_cover_templates() -> Dict[str, object]:
 def api_plan(req: PlanRequest, request: Request) -> Dict[str, object]:
     deck_id = f"deck_{uuid.uuid4().hex[:8]}"
     d_dir = _deck_dir(deck_id)
-    req_settings, provider = _request_provider(request)
-    planner = PlannerAgent(provider=provider)
-    deck = planner.plan_deck(
-        source_text=req.source_text,
-        deck_title=req.deck_title,
-        author=req.author,
-        affiliation=req.affiliation,
-        scenario=req.scenario,
-        target_slide_count=req.target_slide_count,
-        palette_id=req.palette_id,
-        is_proposal=req.is_proposal,
-        deck_id=deck_id,
-        design_style=req.design_style,
-        cover_template=req.cover_template,
-        advisor=req.advisor,
-        date_str=req.date_str,
-    )
+    req_settings, provider, billing_info = _resolve_request_provider(request, consume_for_plan=True)
+    try:
+        planner = PlannerAgent(provider=provider)
+        deck = planner.plan_deck(
+            source_text=req.source_text,
+            deck_title=req.deck_title,
+            author=req.author,
+            affiliation=req.affiliation,
+            scenario=req.scenario,
+            target_slide_count=req.target_slide_count,
+            palette_id=req.palette_id,
+            is_proposal=req.is_proposal,
+            deck_id=deck_id,
+            design_style=req.design_style,
+            cover_template=req.cover_template,
+            advisor=req.advisor,
+            date_str=req.date_str,
+        )
 
-    factory = ScientificFigureFactory(settings=req_settings, provider=provider)
-    for sl in deck.slides:
-        if sl.figure_spec:
-            factory.render_figure_spec(
-                sl.figure_spec,
-                output_dir=d_dir / "figures" / f"slide_{sl.slide_no:02d}",
-                palette_id=deck.meta.palette_id,
-                is_proposal=deck.meta.is_proposal,
+        factory = ScientificFigureFactory(settings=req_settings, provider=provider)
+        for sl in deck.slides:
+            if sl.figure_spec:
+                factory.render_figure_spec(
+                    sl.figure_spec,
+                    output_dir=d_dir / "figures" / f"slide_{sl.slide_no:02d}",
+                    palette_id=deck.meta.palette_id,
+                    is_proposal=deck.meta.is_proposal,
+                )
+            preview_p = d_dir / "previews" / f"slide_{sl.slide_no:02d}.png"
+            render_slide_preview_png(sl, deck, preview_p)
+
+        spec_path = d_dir / "deck_spec.json"
+        spec_path.write_text(deck.model_dump_json(by_alias=True, indent=2), encoding="utf-8")
+    except Exception as exc:
+        if billing_info and billing_info.get("cost", 0) > 0:
+            billing_store.refund(
+                billing_info["code"],
+                amount=int(billing_info["cost"]),
+                detail=f"error:{type(exc).__name__}",
             )
-        preview_p = d_dir / "previews" / f"slide_{sl.slide_no:02d}.png"
-        render_slide_preview_png(sl, deck, preview_p)
-
-    spec_path = d_dir / "deck_spec.json"
-    spec_path.write_text(deck.model_dump_json(by_alias=True, indent=2), encoding="utf-8")
+        raise
 
     return {
         "deck_spec": deck.model_dump(by_alias=True),
@@ -268,6 +476,7 @@ def api_plan(req: PlanRequest, request: Request) -> Dict[str, object]:
             for sl in deck.slides
         },
         "asset_urls": _collect_asset_urls(deck),
+        "billing": billing_info,
     }
 
 

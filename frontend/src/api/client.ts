@@ -14,6 +14,60 @@ import type {
 import { buildAiHeaders, loadAiConfig } from "../types/aiConfig";
 import type { AiConfig } from "../types/aiConfig";
 
+function extractApiError(status: number, text: string): string {
+  try {
+    const parsed = JSON.parse(text) as { detail?: string };
+    if (parsed && typeof parsed.detail === "string" && parsed.detail.trim()) {
+      return parsed.detail.trim();
+    }
+  } catch {
+    // plain text fallback
+  }
+  return `API ${status}: ${text}`;
+}
+
+export interface BillingStatus {
+  hosted_ai_enabled: boolean;
+  hosted_backend: string;
+  model_label: string;
+  purchase_note: string;
+  plan_cost: number;
+  require_code_for_hosted: boolean;
+}
+
+export interface RedeemCheckResult {
+  valid: boolean;
+  code: string;
+  credits_left: number;
+  credits_total: number;
+  active: boolean;
+  expired: boolean;
+  label: string;
+  expires_at: number | null;
+  message: string;
+}
+
+export interface BillingReceipt {
+  mode: string;
+  code: string;
+  cost: number;
+  credits_left: number;
+  credits_total: number;
+}
+
+export interface AdminCodeItem {
+  code: string;
+  label: string;
+  credits_total: number;
+  credits_left: number;
+  active: boolean;
+  expired: boolean;
+  valid: boolean;
+  created_at: number;
+  expires_at: number | null;
+  last_used_at: number | null;
+}
+
 async function jsonReq<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...options,
@@ -25,9 +79,49 @@ async function jsonReq<T>(url: string, options?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`API ${res.status}: ${text}`);
+    throw new Error(extractApiError(res.status, text));
   }
   return res.json() as Promise<T>;
+}
+
+export async function fetchBillingStatus(): Promise<BillingStatus> {
+  return jsonReq("/api/billing/status");
+}
+
+export async function checkAccessCode(code: string): Promise<RedeemCheckResult> {
+  return jsonReq("/api/billing/redeem-check", {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+}
+
+export async function adminGenerateCodes(
+  adminSecret: string,
+  payload: { count: number; credits: number; prefix?: string; label?: string; valid_days?: number | null },
+): Promise<{ codes: AdminCodeItem[] }> {
+  return jsonReq("/api/admin/codes/generate", {
+    method: "POST",
+    headers: { "X-Admin-Secret": adminSecret },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function adminListCodes(adminSecret: string): Promise<{ codes: AdminCodeItem[]; total: number }> {
+  return jsonReq("/api/admin/codes", {
+    headers: { "X-Admin-Secret": adminSecret },
+  });
+}
+
+export async function adminSetCodeActive(
+  adminSecret: string,
+  code: string,
+  active: boolean,
+): Promise<{ ok: boolean; code: string; active: boolean }> {
+  return jsonReq("/api/admin/codes/revoke", {
+    method: "POST",
+    headers: { "X-Admin-Secret": adminSecret },
+    body: JSON.stringify({ code, active }),
+  });
 }
 
 export async function testAiConnection(cfg: AiConfig): Promise<{
@@ -36,6 +130,8 @@ export async function testAiConnection(cfg: AiConfig): Promise<{
   model: string;
   latency_ms: number;
   message: string;
+  credits_left?: number;
+  credits_total?: number;
 }> {
   return jsonReq("/api/llm/test", {
     method: "POST",
@@ -70,6 +166,7 @@ export async function planDeck(payload: {
   deck_spec: DeckSpec;
   artifact_urls: Record<string, string>;
   asset_urls: Record<string, AssetUrlBundle>;
+  billing?: BillingReceipt | null;
 }> {
   return jsonReq("/api/plan", { method: "POST", body: JSON.stringify(payload) });
 }
@@ -78,6 +175,7 @@ export async function planDeckFromFile(formData: FormData): Promise<{
   deck_spec: DeckSpec;
   artifact_urls: Record<string, string>;
   asset_urls: Record<string, AssetUrlBundle>;
+  billing?: BillingReceipt | null;
 }> {
   const res = await fetch("/api/plan/upload", {
     method: "POST",
@@ -85,7 +183,7 @@ export async function planDeckFromFile(formData: FormData): Promise<{
     body: formData,
   });
   if (!res.ok) {
-    throw new Error(`Upload failed: ${await res.text()}`);
+    throw new Error(extractApiError(res.status, await res.text()));
   }
   return res.json();
 }

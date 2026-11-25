@@ -13,6 +13,7 @@ import {
 import {
   applyPaletteToDeck,
   buildPptx,
+  checkAccessCode,
   fetchArchetypes,
   fetchPalettes,
   planDeck,
@@ -42,7 +43,7 @@ import { ImportModal } from "./components/ImportModal";
 import { PaletteSelector } from "./components/PaletteSelector";
 import { ExportPanel } from "./components/ExportPanel";
 import { ModelSettingsModal } from "./components/ModelSettingsModal";
-import { isCloudAiActive, loadAiConfig, saveAiConfig } from "./types/aiConfig";
+import { isCloudAiActive, isHostedAiActive, loadAiConfig, saveAiConfig } from "./types/aiConfig";
 import type { AiConfig } from "./types/aiConfig";
 
 const NIRMATRELVIR_DEMO_OUTLINE = `# Classic Medicinal Chemistry Structures & Catalytic Mechanisms
@@ -101,6 +102,7 @@ export function App() {
   const [exportOpen, setExportOpen] = useState(false);
   const [modelSettingsOpen, setModelSettingsOpen] = useState(false);
   const [aiConfig, setAiConfig] = useState<AiConfig>(() => loadAiConfig());
+  const [hostedCredits, setHostedCredits] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -123,6 +125,16 @@ export function App() {
       })
       .catch((err) => setErrorMsg(String(err)));
   }, []);
+
+  useEffect(() => {
+    if (aiConfig.provider === "hosted" && aiConfig.accessCode.trim()) {
+      checkAccessCode(aiConfig.accessCode.trim())
+        .then((res) => setHostedCredits(res.valid ? res.credits_left : 0))
+        .catch(() => setHostedCredits(null));
+    } else {
+      setHostedCredits(null);
+    }
+  }, [aiConfig.provider, aiConfig.accessCode]);
 
   const refreshSlidePreview = async (curDeck: DeckSpec, slideNo: number, layers: string[]) => {
     const res = await renderSlideLayersPreview(curDeck, slideNo, layers);
@@ -154,6 +166,9 @@ export function App() {
       setSelectedSlideNo(res.deck_spec.slides[0]?.slide_no || 1);
       setImportOpen(false);
       setBuildResult(null);
+      if (typeof res.billing?.credits_left === "number") {
+        setHostedCredits(res.billing.credits_left);
+      }
     } catch (err) {
       setErrorMsg(String(err));
     } finally {
@@ -189,6 +204,9 @@ export function App() {
       setSelectedSlideNo(res.deck_spec.slides.find((s) => s.slide_type === "content")?.slide_no || 1);
       setImportOpen(false);
       setBuildResult(null);
+      if (typeof res.billing?.credits_left === "number") {
+        setHostedCredits(res.billing.credits_left);
+      }
     } catch (err) {
       setErrorMsg(String(err));
     } finally {
@@ -498,7 +516,13 @@ export function App() {
                 border: `1px solid ${isCloudAiActive(aiConfig) ? "#B7DEC9" : "var(--rule-hairline)"}`,
               }}
             >
-              {isCloudAiActive(aiConfig) ? (aiConfig.model || aiConfig.provider) : "本地引擎"}
+              {isHostedAiActive(aiConfig)
+                ? hostedCredits !== null
+                  ? `官方 Pro · 剩 ${hostedCredits} 次`
+                  : "官方 Pro"
+                : isCloudAiActive(aiConfig)
+                  ? aiConfig.model || aiConfig.provider
+                  : "本地引擎"}
             </span>
           </button>
           <button type="button" className="btn-editorial-ghost" onClick={() => setImportOpen(true)}>
@@ -865,6 +889,7 @@ export function App() {
         open={modelSettingsOpen}
         initialConfig={aiConfig}
         onClose={() => setModelSettingsOpen(false)}
+        onCreditsUpdated={setHostedCredits}
         onSaved={(cfg) => {
           saveAiConfig(cfg);
           setAiConfig(cfg);
