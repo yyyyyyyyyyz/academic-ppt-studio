@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from ..builder.v5_layouts import get_v5_figure_box
+from ..figure_factory.chem_grounding import resolve_compound_smiles
 from ..providers.llm_image_provider import ModelProvider
 from ..schemas.deck_spec import (
     ArchetypeId,
@@ -19,6 +20,7 @@ from ..schemas.deck_spec import (
     SlideSpec,
     SlideType,
     TableData,
+    V5_LAYOUT_IDS,
 )
 
 
@@ -414,6 +416,8 @@ class ArtDirectorAgent:
         design_style: DesignStyle = DesignStyle.defense_modular,
         section_smiles: Optional[List[str]] = None,
         section_images: Optional[List[str]] = None,
+        visual_plan: Optional[Dict[str, Any]] = None,
+        table_chart_data: Optional[Dict[str, Any]] = None,
     ) -> SlideSpec:
         if slide.slide_type == SlideType.cover:
             slide.figure_spec = build_default_figure_spec(
@@ -430,15 +434,61 @@ class ArtDirectorAgent:
         if slide.slide_type != SlideType.content:
             return slide
 
+        vp = visual_plan or {}
         arch, preset, mech_mode = self._choose_archetype_and_preset(slide, is_proposal=is_proposal, content_index=content_index)
+
+        vp_smiles = str(vp.get("smiles") or vp.get("compound_name") or "").strip()
         smiles: Optional[str] = None
-        if section_smiles:
+        if vp_smiles:
+            smiles = resolve_compound_smiles(vp_smiles) or (section_smiles[0] if section_smiles else None)
+        elif section_smiles:
             smiles = section_smiles[0]
         elif detected_smiles:
             smiles = detected_smiles[content_index % len(detected_smiles)]
 
+        vp_mode = str(vp.get("mode") or "").strip().lower()
+        chem_style = str(vp.get("chem_style") or "").strip().lower()
+        custom_plot_data: Optional[Dict[str, Any]] = None
+        custom_mech_data: Optional[Dict[str, Any]] = None
+        custom_scene_desc: Optional[str] = None
+
+        if vp_mode == "chemdraw_2d":
+            arch = ArchetypeId.A05
+        elif vp_mode == "pymol_3d":
+            arch = ArchetypeId.A04
+        elif vp_mode == "mechanism_3d_pathway":
+            arch = ArchetypeId.A10
+            mech_mode = "molecular_3d_pathway"
+            if isinstance(vp.get("pathway_spec"), dict):
+                custom_mech_data = dict(vp["pathway_spec"])
+        elif vp_mode == "origin_real_data" and not is_proposal:
+            arch = ArchetypeId.A06
+            preset = str(vp.get("origin_preset") or "nature_grouped_bar")
+            if isinstance(vp.get("chart_data"), dict) and (vp["chart_data"].get("categories") or vp["chart_data"].get("labels")):
+                custom_plot_data = dict(vp["chart_data"])
+        elif vp_mode == "blender_3d_ai":
+            arch = ArchetypeId.A01
+            if vp.get("scene_description"):
+                custom_scene_desc = str(vp["scene_description"])
+        elif table_chart_data and not is_proposal and arch not in (ArchetypeId.A04, ArchetypeId.A05):
+            arch = ArchetypeId.A06
+            preset = "nature_grouped_bar"
+            custom_plot_data = dict(table_chart_data)
+
+        if not custom_plot_data and table_chart_data and arch == ArchetypeId.A06 and not is_proposal:
+            preset = "nature_grouped_bar"
+            custom_plot_data = dict(table_chart_data)
+
         if design_style != DesignStyle.zero_fill_frameless:
-            slide.layout_id = self._choose_v5_layout(slide, is_proposal=is_proposal, content_index=content_index)
+            llm_layout_raw = str(vp.get("layout_id") or "").strip()
+            chosen_layout: Optional[LayoutId] = None
+            for lid in V5_LAYOUT_IDS:
+                if lid.value == llm_layout_raw:
+                    chosen_layout = lid
+                    break
+            if slide.table_data is not None:
+                chosen_layout = LayoutId.data_dashboard_table
+            slide.layout_id = chosen_layout or self._choose_v5_layout(slide, is_proposal=is_proposal, content_index=content_index)
             if design_style == DesignStyle.consulting_editorial:
                 slide.header_variant = "editorial"
             elif slide.layout_id in (LayoutId.pain_points_left_arrows, LayoutId.roadmap_layered_matrix):
@@ -482,7 +532,20 @@ class ArtDirectorAgent:
             origin_preset=preset,
             is_proposal=is_proposal,
         )
-        if mech_mode and fig_spec.assets:
-            fig_spec.assets[0].mech_mode = mech_mode
+        if fig_spec.assets:
+            primary = fig_spec.assets[0]
+            if mech_mode:
+                primary.mech_mode = mech_mode
+            if custom_mech_data:
+                primary.mech_data = custom_mech_data
+            if custom_plot_data and primary.engine == EngineType.origin_plot:
+                primary.plot_data = custom_plot_data
+            if custom_scene_desc and primary.engine == EngineType.sci3d_art:
+                primary.scene_description = custom_scene_desc
+            if chem_style:
+                for ast in fig_spec.assets:
+                    if ast.engine == EngineType.chemdraw_rdkit:
+                        ast.chem_style = chem_style
+                        ast.drug_burgundy = chem_style == "nature_burgundy"
         slide.figure_spec = fig_spec
         return slide

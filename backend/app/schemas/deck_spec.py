@@ -208,6 +208,9 @@ class FigureAsset(BaseModel):
     qa_result: AssetQAResult = Field(default_factory=AssetQAResult)
     png_path: Optional[str] = None
     svg_path: Optional[str] = None
+    cdxml_path: Optional[str] = None
+    sdf_path: Optional[str] = None
+    csv_path: Optional[str] = None
 
 
 class NativeOverlay(BaseModel):
@@ -353,6 +356,7 @@ class SelectOrRefineFigureRequest(BaseModel):
     highlight_atoms: Optional[List[int]] = None
     origin_preset: Optional[str] = None
     render_mode: Optional[str] = None
+    chem_style_override: Optional[str] = None
 
 
 class PaletteApplyRequest(BaseModel):

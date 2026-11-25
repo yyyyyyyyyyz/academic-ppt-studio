@@ -122,6 +122,7 @@ export interface FigureAsset {
   highlight_halo_token: string;
   heteroatom_theme_sync: boolean;
   drug_burgundy: boolean;
+  chem_style?: string;
   rotation_deg: number[];
   outline_stroke: string;
   preset?: string | null;
@@ -140,6 +141,9 @@ export interface FigureAsset {
   qa_result: AssetQAResult;
   png_path?: string | null;
   svg_path?: string | null;
+  cdxml_path?: string | null;
+  sdf_path?: string | null;
+  csv_path?: string | null;
 }
 
 export interface NativeOverlay {
@@ -264,6 +268,10 @@ export interface AuditReport {
 
 export interface AssetUrlBundle {
   png_url?: string | null;
+  svg_url?: string | null;
+  cdxml_url?: string | null;
+  sdf_url?: string | null;
+  csv_url?: string | null;
   candidates?: Array<{
     candidate_id: string;
     png_url?: string | null;

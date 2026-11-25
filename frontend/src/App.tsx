@@ -339,6 +339,7 @@ export function App() {
     fixed_bond_length_px?: number;
     origin_preset?: string;
     render_mode?: string;
+    chem_style_override?: string;
   }) => {
     if (!deck || !currentSlide?.figure_spec) return;
     setBusy(true);

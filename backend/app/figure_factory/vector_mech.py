@@ -424,6 +424,121 @@ def _render_pd_coupling_cycle_preview(
     return output_png
 
 
+def _render_molecular_3d_pathway_preview(
+    output_png: Path,
+    pal: ScientificPalette,
+    data: Dict[str, Any],
+    w_in: float,
+    h_in: float,
+    dpi: int,
+) -> Path:
+    """Image-3 style 3D ball-and-stick + vector reaction pathway with dashed zoom enclosure & CPK atom legend."""
+    from matplotlib.offsetbox import AnnotationBbox, OffsetImage
+    from .cylview3d_engine import render_cylview3d
+    from .chem_grounding import resolve_compound_smiles
+
+    plt.rcParams.update({"font.sans-serif": ["Microsoft YaHei", "Noto Sans CJK SC", "WenQuanYi Zen Hei", "SimHei", "Arial", "Liberation Sans", "DejaVu Sans"], "axes.unicode_minus": False})
+    fig = plt.figure(figsize=(max(w_in, 7.2), max(h_in, 4.4)), dpi=dpi)
+    fig.patch.set_alpha(0.0)
+    ax = fig.add_axes([0.02, 0.02, 0.96, 0.96])
+    ax.set_xlim(0.0, 10.0)
+    ax.set_ylim(0.0, 6.2)
+    ax.axis("off")
+
+    nodes = list(data.get("nodes") or [])
+    if len(nodes) < 3:
+        fallback_smi = resolve_compound_smiles(str(data.get("smiles") or "Osimertinib")) or "COc1cc(N(C)CCN(C)C)c(NC(=O)C=C)cc1Nc2nccc(n2)c3cn(C)c4ccccc34"
+        nodes = [
+            {"smiles": "CC(=O)OO", "label": str(data.get("reactant_label") or "Reactant / Ligand")},
+            {"smiles": "O=S([O-])(=O)O", "label": str(data.get("intermediate_label") or "IM1 Complex")},
+            {"smiles": fallback_smi, "label": str(data.get("product_label") or "Target Active State")},
+        ]
+    step_labels = list(data.get("step_labels") or ["Nucleophilic / Binding", "Intermediate State", "Product Activation"])
+    top_title = str(data.get("title_top") or "Primary Pathway vs. Inhibited Route").strip()
+    blocked_label = str(data.get("blocked_label") or "High-Barrier Route").strip()
+    sub_box_label = str(data.get("sub_box_label") or "Concerted Reaction Microenvironment").strip()
+
+    # Render up to 3 genuine 3D ball-and-stick conformer PNGs into temp dir next to output
+    mol_tmp = output_png.parent / "_pathway_3d"
+    mol_tmp.mkdir(parents=True, exist_ok=True)
+    rendered_imgs: List[Tuple[Image.Image, str]] = []
+    for idx, nd in enumerate(nodes[:3]):
+        smi = resolve_compound_smiles(str(nd.get("smiles") or "")) or "CC(=O)O"
+        res_3d = render_cylview3d(
+            smiles=smi,
+            output_png=mol_tmp / f"node_{idx}.png",
+            palette_id=pal.id,
+            target_width_px=420,
+            dpi=200,
+        )
+        im = Image.open(res_3d.png_path).convert("RGBA")
+        rendered_imgs.append((im, str(nd.get("label") or f"Species {idx + 1}")[:22]))
+
+    # Top overview bar
+    ax.text(5.0, 5.88, top_title[:42], ha="center", va="center", fontsize=12.5, fontweight="bold", color=pal.ink)
+    top_l = rendered_imgs[0]
+    top_r = rendered_imgs[-1]
+    for xpos, (im, lbl) in [(2.1, top_l), (7.9, top_r)]:
+        oi = OffsetImage(np.asarray(im), zoom=0.14)
+        ax.add_artist(AnnotationBbox(oi, (xpos, 5.25), frameon=False, zorder=5))
+        ax.text(xpos, 4.62, lbl, ha="center", va="center", fontsize=11.0, fontweight="bold", color=pal.ink)
+
+    # Blocked upper route + orange cross, lower active route
+    ax.annotate("", xy=(6.35, 5.38), xytext=(3.65, 5.38),
+                arrowprops=dict(arrowstyle="-|>,head_width=0.28,head_length=0.4", lw=2.2, color=pal.s1, connectionstyle="arc3,rad=-0.22"), zorder=4)
+    ax.text(5.0, 5.56, "×", ha="center", va="center", fontsize=18.0, fontweight="bold", color=pal.alert, zorder=6)
+    ax.text(5.0, 5.14, blocked_label[:24], ha="center", va="center", fontsize=10.5, color=pal.muted)
+    ax.annotate("", xy=(6.35, 4.92), xytext=(3.65, 4.92),
+                arrowprops=dict(arrowstyle="-|>,head_width=0.28,head_length=0.4", lw=2.2, color=pal.s1, connectionstyle="arc3,rad=0.20"), zorder=4)
+
+    # Zoom-in dashed crimson connectors from main arrow to large bottom dashed enclosure
+    ax.plot([4.3, 0.65], [4.75, 4.02], "--", color=pal.alert, lw=1.4, zorder=2)
+    ax.plot([5.7, 9.35], [4.75, 4.02], "--", color=pal.alert, lw=1.4, zorder=2)
+
+    enclosure = patches.FancyBboxPatch(
+        (0.35, 0.35), 9.30, 3.68,
+        boxstyle="round,pad=0.05,rounding_size=0.22",
+        facecolor=blend_with_white("#FFFFFF", 0.0), edgecolor=pal.alert, lw=1.6, linestyle="--", zorder=1,
+    )
+    ax.add_patch(enclosure)
+    ax.text(5.0, 4.18, sub_box_label[:38], ha="center", va="center", fontsize=12.0, fontweight="bold", color=pal.ink)
+
+    # Place 3 detailed 3D ball-and-stick nodes inside the dashed mechanism box
+    xs_pos = [1.85, 5.00, 8.15]
+    for idx, (xpos, (im, lbl)) in enumerate(zip(xs_pos, rendered_imgs)):
+        if idx == 1:
+            sub_box = patches.FancyBboxPatch(
+                (xpos - 1.38, 1.05), 2.76, 2.55,
+                boxstyle="round,pad=0.03,rounding_size=0.14",
+                facecolor=blend_with_white(pal.s5, 0.55), edgecolor=pal.s2, lw=1.3, linestyle="--", zorder=2,
+            )
+            ax.add_patch(sub_box)
+        oi = OffsetImage(np.asarray(im), zoom=0.22)
+        ax.add_artist(AnnotationBbox(oi, (xpos, 2.45), frameon=False, zorder=5))
+        ax.text(xpos, 1.28, lbl, ha="center", va="center", fontsize=11.5, fontweight="bold", color=pal.ink, zorder=6)
+
+    # Curved blue mechanistic step arrows between 3D intermediates
+    for idx in range(len(rendered_imgs) - 1):
+        x0, x1 = xs_pos[idx] + 0.95, xs_pos[idx + 1] - 0.95
+        ax.annotate("", xy=(x1, 2.45), xytext=(x0, 2.45),
+                    arrowprops=dict(arrowstyle="-|>,head_width=0.32,head_length=0.45", lw=2.5, color=pal.s1, connectionstyle="arc3,rad=-0.12"), zorder=6)
+        stxt = str(step_labels[idx] if idx < len(step_labels) else f"Step {idx + 1}")[:20]
+        ax.text(0.5 * (x0 + x1), 2.95, stxt, ha="center", va="center", fontsize=11.0, fontweight="bold", color=pal.alert, zorder=7)
+
+    # Bottom-left CPK atom legend (H, C, N, O, S) matching Image 3
+    cpk_items = [("#E5E7EB", "H"), ("#6B7280", "C"), (pal.s1, "N"), ("#DC2626", "O"), ("#D97706", "S")]
+    for l_idx, (col_hex, sym) in enumerate(cpk_items):
+        lx = 0.78 + l_idx * 0.92
+        circ = patches.Circle((lx, 0.68), 0.14, facecolor=col_hex, edgecolor=pal.ink, lw=0.8, zorder=6)
+        ax.add_patch(circ)
+        ax.text(lx + 0.24, 0.68, sym, ha="left", va="center", fontsize=11.0, fontweight="bold", color=pal.ink, zorder=6)
+
+    output_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(str(output_png), dpi=dpi, transparent=True)
+    plt.close(fig)
+    return output_png
+
+
 def render_vector_mechanism(
     mech_mode: str,
     output_png: Path | str,
@@ -433,12 +548,14 @@ def render_vector_mechanism(
     box_height_in: float = 4.42,
     dpi: int = 300,
 ) -> Path:
-    """Render any VectorMechanismEngine mode (A09 sunburst / A10 cycles, roadmap_4stage, gap_quadrant, delta_g_concept)."""
+    """Render any VectorMechanismEngine mode (A09 sunburst / A10 cycles, roadmap_4stage, gap_quadrant, delta_g_concept, molecular_3d_pathway)."""
     pal = get_palette(palette_id)
     out_p = Path(output_png)
     data = mech_data or {}
 
     mode = (mech_mode or "dual_cycle").strip().lower()
+    if mode == "molecular_3d_pathway":
+        return _render_molecular_3d_pathway_preview(out_p, pal, data, box_width_in, box_height_in, dpi)
     if mode == "sunburst_pathway":
         return _render_sunburst_preview(out_p, pal, data, box_width_in, box_height_in, dpi)
     if mode == "roadmap_4stage":

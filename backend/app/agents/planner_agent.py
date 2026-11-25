@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
+from ..figure_factory.chem_grounding import extract_compounds_from_text, resolve_compound_smiles
 from ..providers.llm_image_provider import ModelProvider
 from ..schemas.deck_spec import (
     CoverTemplateId,
@@ -24,6 +25,7 @@ from .doc_parser import (
     ParsedDocument,
     ParsedSection,
     clean_prose_without_smiles,
+    extract_chart_data_from_table,
     parse_scientific_text,
 )
 
@@ -242,20 +244,49 @@ class PlannerAgent:
         if self.provider.active_text_backend() == "local":
             return None
 
+        table_summaries: List[str] = []
+        for idx, sec in enumerate(doc.sections):
+            for tbl in sec.tables[:2]:
+                rows_txt = "; ".join([" | ".join(r[:5]) for r in ([tbl.headers] + tbl.rows[:4])])
+                table_summaries.append(f"[Sec {idx + 1} Table]: {rows_txt}")
+        compound_list = extract_compounds_from_text(doc.raw_text)[:12]
+        compound_summary = ", ".join(f"{lbl}={smi}" for lbl, smi in compound_list) if compound_list else "None detected"
+
         sys_p = (
-            "You are a top-tier Academic Presentation Planner (Nature/Science/Angewandte standard). "
-            "Given a scientific source document, produce strict JSON: "
-            '{"slides": [{"section_name": str, "eyebrow": str, "title": str (<=22 Chinese chars), '
-            '"takeaway": str (<=36 chars, 1 sentence), "kpis": [{"value": str, "label": str}], '
-            '"insights": [{"index": "01", "heading": str, "body": str (<=24 chars), "highlight": str (2-8 chars)}], '
-            '"speaker_notes": str}]}. '
-            f"Produce EXACTLY {num_content} items in slides. Keep slide body text ultra-concise (40-70 chars total) "
-            "and offload all detailed experimental conditions and references into speaker_notes. "
+            "You are a top-tier Academic Presentation Planner & Art Director (Nature/JACS/Science standard). "
+            "Given a scientific manuscript, produce strict JSON with layout choice AND visual drawing instructions per slide:\n"
+            '{"slides": [{"section_name": str, "eyebrow": str, '
+            '"layout_id": "bg_top_summary_3box"|"pain_points_left_arrows"|"lit_overview_dual_card"|"mechanism_3col_flow"|"data_dashboard_table"|"fig_left_3step_chain"|"vs_center_wing"|"roadmap_layered_matrix", '
+            '"title": str (<=22 chars), "takeaway": str (<=40 chars, 1 sentence), '
+            '"kpis": [{"value": str, "label": str}], '
+            '"insights": [{"index": "01", "heading": str, "body": str (<=30 chars), "highlight": str (2-10 chars)}], '
+            '"visual_plan": {"mode": "chemdraw_2d"|"pymol_3d"|"origin_real_data"|"mechanism_3d_pathway"|"blender_3d_ai"|"vector_mech", '
+            '"compound_name": str, "smiles": str, "chem_style": "nature_burgundy"|"shaded_scaffold"|"jacs_terracotta"|"reactive_spot"|"minimal_mono"|"acs1996", '
+            '"origin_preset": "nature_grouped_bar"|"nature_step_drop_zoom"|"nature_horizontal_ranked"|"kinetics_spline"|"dft_energy_profile", '
+            '"chart_data": {"categories": [str], "series": [{"name": str, "values": [float]}], "ylabel": str, "p_value": str}, '
+            '"pathway_spec": {"title_top": str, "blocked_label": str, "sub_box_label": str, "nodes": [{"smiles": str, "label": str}], "step_labels": [str]}, '
+            '"scene_description": str}, '
+            '"speaker_notes": str}]}\n'
+            f"Produce EXACTLY {num_content} items in slides. Vary layout_id cleanly across adjacent slides. "
+            "Never invent numbers in chart_data—only extract real measurements from text/tables. "
+            "Keep slide body text ultra-concise and put experimental details in speaker_notes. "
             + ("This is a research PROPOSAL: do NOT fabricate experimental yields or curves." if is_proposal else "")
         )
-        usr_p = f"Title: {doc.title}\nScenario: {scenario.value}\nDocument:\n{doc.raw_text[:6000]}"
-        res = self.provider.generate_json(sys_p, usr_p, timeout=45.0)
+        extra_context = ""
+        if table_summaries:
+            extra_context += "\n\nExtracted Word Tables:\n" + "\n".join(table_summaries[:6])
+        extra_context += f"\n\nDetected Compounds/SMILES:\n{compound_summary}"
+        usr_p = f"Title: {doc.title}\nScenario: {scenario.value}\nDocument:\n{doc.raw_text[:14000]}{extra_context}"
+        res = self.provider.generate_json(sys_p, usr_p, timeout=55.0)
         if isinstance(res, dict) and isinstance(res.get("slides"), list) and len(res["slides"]) >= 1:
+            for item in res["slides"]:
+                if isinstance(item, dict) and isinstance(item.get("visual_plan"), dict):
+                    vp = item["visual_plan"]
+                    raw_smi = str(vp.get("smiles") or vp.get("compound_name") or "").strip()
+                    if raw_smi:
+                        resolved = resolve_compound_smiles(raw_smi, allow_pubchem=True)
+                        if resolved:
+                            vp["smiles"] = resolved
             return res["slides"]
         return None
 
@@ -376,6 +407,10 @@ class PlannerAgent:
                 sec_table: Optional[TableData] = None
                 sec_smiles = sec.smiles if sec else None
                 sec_images = sec.image_paths if sec else None
+                visual_plan: Optional[Dict[str, Any]] = None
+                table_chart_data: Optional[Dict[str, Any]] = None
+                if sec and sec.tables and not proposal_flag:
+                    table_chart_data = extract_chart_data_from_table(sec.tables[0], heading=sec.heading)
 
                 if llm_slides and c_idx < len(llm_slides):
                     raw_s = llm_slides[c_idx]
@@ -383,6 +418,12 @@ class PlannerAgent:
                     eyebrow = raw_s.get("eyebrow", f"SECTION {c_idx + 1:02d}")
                     title = raw_s.get("title", sec_name)[:28]
                     takeaway = raw_s.get("takeaway", "")[:46]
+                    if isinstance(raw_s.get("visual_plan"), dict):
+                        visual_plan = dict(raw_s["visual_plan"])
+                        if raw_s.get("layout_id"):
+                            visual_plan["layout_id"] = raw_s["layout_id"]
+                    elif raw_s.get("layout_id"):
+                        visual_plan = {"layout_id": raw_s["layout_id"]}
                     kpis = [
                         KpiItem(
                             value=k.get("value", "—"),
@@ -447,6 +488,8 @@ class PlannerAgent:
                         design_style=design_style,
                         section_smiles=sec_smiles,
                         section_images=sec_images,
+                        visual_plan=visual_plan,
+                        table_chart_data=table_chart_data,
                     )
                 )
 

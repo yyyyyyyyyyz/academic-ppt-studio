@@ -18,6 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-noto-cjk \
     fonts-liberation \
     fonts-dejavu-core \
+    pymol \
     && fc-cache -fv \
     && rm -rf /var/lib/apt/lists/*
 

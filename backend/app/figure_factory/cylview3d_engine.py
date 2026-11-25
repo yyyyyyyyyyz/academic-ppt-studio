@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import shutil
+import subprocess
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -16,6 +18,7 @@ from PIL import Image
 from rdkit import Chem
 from rdkit.Chem import AllChem
 
+from .chem_grounding import resolve_compound_smiles
 from .palettes import ScientificPalette, get_palette, hex_to_rgb
 
 
@@ -28,6 +31,7 @@ class CYLviewRenderResult:
     atom_count: int
     bond_count: int
     method: str = "ETKDGv3+MMFF94+AnalyticalZBuffer"
+    sdf_path: Optional[Path] = None
 
 
 _ATOM_RADII_A: Dict[int, float] = {
@@ -208,6 +212,54 @@ def project_3d_substructure_anchor(
     return (round(px, 3), round(py, 3))
 
 
+def _try_render_pymol_raytrace(
+    sdf_path: Path,
+    out_png: Path,
+    width: int = 960,
+    height: int = 720,
+    dpi: int = 300,
+) -> bool:
+    """Invoke headless PyMOL ray tracing when `pymol` CLI is installed in Linux container."""
+    pymol_bin = shutil.which("pymol")
+    if not pymol_bin:
+        return False
+    pml_path = out_png.with_suffix(".pml")
+    script = "\n".join([
+        f"load {sdf_path.resolve()}, lig",
+        "bg_color white",
+        "set ray_opaque_background, 0",
+        "hide everything",
+        "show sticks, lig",
+        "show spheres, lig",
+        "set stick_radius, 0.16",
+        "set sphere_scale, 0.27",
+        "set valence, 1",
+        "util.cbaw lig",
+        "set antialias, 2",
+        "set ambient, 0.35",
+        "set spec_reflect, 0.85",
+        "orient lig",
+        "zoom lig, 1.4",
+        f"ray {width}, {height}",
+        f"png {out_png.resolve()}, dpi={dpi}",
+        "quit",
+    ])
+    try:
+        pml_path.write_text(script, encoding="utf-8")
+        subprocess.run(
+            [pymol_bin, "-cq", str(pml_path)],
+            timeout=25,
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return out_png.is_file() and out_png.stat().st_size > 4096
+    except Exception:
+        return False
+    finally:
+        pml_path.unlink(missing_ok=True)
+
+
 def render_cylview3d(
     smiles: str,
     output_png: Path | str,
@@ -218,10 +270,34 @@ def render_cylview3d(
     dpi: int = 600,
     show_nonpolar_h: Optional[bool] = None,
 ) -> CYLviewRenderResult:
-    """Render a deterministic, chemically exact 3D ball-and-stick molecule PNG with true Alpha."""
+    """Render deterministic ETKDGv3+MMFF94 3D ball-and-stick PNG, export .sdf, using PyMOL ray-trace if installed."""
     palette = get_palette(palette_id)
-    mol, coords = _embed_and_align(smiles, rotation_deg=rotation_deg)
+    resolved_smiles = resolve_compound_smiles(smiles) or smiles
+    mol, coords = _embed_and_align(resolved_smiles, rotation_deg=rotation_deg)
     vis = _visible_atom_mask(mol, show_nonpolar_h)
+    vis_bonds = sum(1 for b in mol.GetBonds() if vis[b.GetBeginAtomIdx()] and vis[b.GetEndAtomIdx()])
+
+    out_p = Path(output_png)
+    out_p.parent.mkdir(parents=True, exist_ok=True)
+    sdf_p = out_p.with_suffix(".sdf")
+    writer = Chem.SDWriter(str(sdf_p))
+    writer.write(mol)
+    writer.close()
+
+    if _try_render_pymol_raytrace(sdf_p, out_p, width=max(720, target_width_px), height=max(540, int(target_width_px * 0.75)), dpi=min(dpi, 300)):
+        with Image.open(out_p) as py_img:
+            pw, ph = py_img.size
+        return CYLviewRenderResult(
+            png_path=out_p,
+            smiles=resolved_smiles,
+            pixel_width=pw,
+            pixel_height=ph,
+            atom_count=int(vis.sum()),
+            bond_count=vis_bonds,
+            method="PyMOL+RayTrace",
+            sdf_path=sdf_p,
+        )
+
     outline_rgb = np.array(hex_to_rgb(outline_stroke), dtype=np.float32)
 
     supersample = 2
@@ -429,9 +505,10 @@ def render_cylview3d(
 
     return CYLviewRenderResult(
         png_path=out_p,
-        smiles=smiles,
+        smiles=resolved_smiles,
         pixel_width=img_out.width,
         pixel_height=img_out.height,
         atom_count=int(vis.sum()),
         bond_count=vis_bonds,
+        sdf_path=sdf_p,
     )

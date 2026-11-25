@@ -29,7 +29,7 @@ from .palettes import ScientificPalette, blend_with_white, get_palette
 def _configure_origin_rcparams(latin_font: str = "Arial", ea_font: str = "微软雅黑") -> None:
     plt.rcParams.update({
         "font.family": "sans-serif" if "Times" not in latin_font else "serif",
-        "font.sans-serif": [latin_font, ea_font, "Arial", "Liberation Sans", "Microsoft YaHei", "Noto Sans CJK SC", "WenQuanYi Zen Hei", "DejaVu Sans"],
+        "font.sans-serif": [ea_font, "Microsoft YaHei", "Noto Sans CJK SC", "WenQuanYi Zen Hei", latin_font, "Arial", "Liberation Sans", "DejaVu Sans"],
         "font.serif": [latin_font, ea_font, "Times New Roman", "Liberation Serif", "SimSun", "Noto Serif CJK SC", "DejaVu Serif"],
         "mathtext.fontset": "custom",
         "mathtext.rm": latin_font,
@@ -558,6 +558,213 @@ def _plot_benchmark_scatter(fig: plt.Figure, palette: ScientificPalette, data: D
     ax.set_ylabel(data.get("ylabel", "Target Yield (%)"), fontsize=14.0, fontweight="bold", color=palette.ink)
 
 
+def _plot_nature_grouped_bar(fig: plt.Figure, palette: ScientificPalette, data: Dict[str, Any]) -> None:
+    """Image-1 Nature/Origin grouped bar chart: borderless top swatch legend, Tukey letters, italic P-value."""
+    ax = fig.add_axes([0.14, 0.17, 0.81, 0.67])
+    _style_origin_axes(ax, palette.ink)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.tick_params(top=False, right=False)
+
+    categories = list(data.get("categories") or ["Ctrl", "Low", "Mid", "High"])
+    raw_series = data.get("series") or [
+        {"name": "Wild-Type", "values": [1.8, 2.4, 3.1, 3.8], "errors": [0.2, 0.25, 0.3, 0.35]},
+        {"name": "Mutant", "values": [2.2, 4.1, 6.4, 8.9], "errors": [0.25, 0.4, 0.5, 0.6]},
+    ]
+    n_cat = max(1, len(categories))
+    n_ser = max(1, len(raw_series))
+    x = np.arange(n_cat, dtype=float)
+    total_w = min(0.76, 0.22 * n_ser + 0.18)
+    bar_w = total_w / n_ser
+    colors = [palette.s1, palette.s2, palette.s3, palette.alert, palette.s4, palette.s5]
+
+    all_tops: List[float] = []
+    letters = list(data.get("letters") or [])
+    for s_idx, ser in enumerate(raw_series):
+        vals = [float(v) for v in (ser.get("values") or [0] * n_cat)[:n_cat]]
+        while len(vals) < n_cat:
+            vals.append(0.0)
+        errs = ser.get("errors")
+        err_arr = [float(e) for e in errs[:n_cat]] if isinstance(errs, list) and len(errs) >= n_cat else None
+        offset = (s_idx - (n_ser - 1) / 2.0) * bar_w
+        col = colors[s_idx % len(colors)]
+        bars = ax.bar(
+            x + offset,
+            vals,
+            width=bar_w * 0.90,
+            color=col,
+            edgecolor=palette.ink,
+            linewidth=0.85,
+            label=str(ser.get("name", f"Series {s_idx + 1}")),
+            zorder=3,
+        )
+        if err_arr:
+            ax.errorbar(
+                x + offset,
+                vals,
+                yerr=err_arr,
+                fmt="none",
+                ecolor=palette.ink,
+                elinewidth=1.0,
+                capsize=3.0,
+                zorder=4,
+            )
+        for b_idx, bar in enumerate(bars):
+            top = bar.get_height() + (err_arr[b_idx] if err_arr else 0.0)
+            all_tops.append(top)
+            if letters and n_ser == 1 and b_idx < len(letters):
+                ax.text(bar.get_x() + bar.get_width() / 2.0, top, str(letters[b_idx]), ha="center", va="bottom", fontsize=14.0, fontweight="bold", color=palette.ink)
+            elif n_cat <= 6 and n_ser <= 2:
+                txt = f"{vals[b_idx]:.1f}" if abs(vals[b_idx]) >= 1 else f"{vals[b_idx]:.2f}"
+                ax.text(bar.get_x() + bar.get_width() / 2.0, top, txt, ha="center", va="bottom", fontsize=13.5, color=palette.ink)
+
+    ymax = max(all_tops) if all_tops else 1.0
+    ax.set_ylim(0, ymax * 1.24 if not data.get("log_y") else ymax * 2.2)
+    if data.get("log_y"):
+        ax.set_yscale("log")
+        ax.set_ylim(max(0.05, min([v for v in all_tops if v > 0] or [0.1]) * 0.5), ymax * 2.5)
+
+    ax.set_xticks(x)
+    ax.set_xticklabels([str(c)[:14] for c in categories], fontsize=14.0, color=palette.ink)
+    ax.set_ylabel(str(data.get("ylabel", "Response / Activity")), fontsize=14.0, fontweight="bold", color=palette.ink)
+    if data.get("xlabel"):
+        ax.set_xlabel(str(data["xlabel"]), fontsize=14.0, fontweight="bold", color=palette.ink)
+
+    p_val = str(data.get("p_value", "")).strip()
+    if p_val:
+        ax.text(0.5, 0.94, p_val, transform=ax.transAxes, ha="center", va="top", fontsize=14.0, style="italic", color=palette.ink)
+
+    panel_lbl = str(data.get("panel_label", "a")).strip()
+    if panel_lbl:
+        ax.text(-0.10, 1.11, panel_lbl, transform=ax.transAxes, fontsize=16.0, fontweight="bold", color=palette.ink)
+
+    if n_ser > 1:
+        ax.legend(
+            loc="lower center",
+            bbox_to_anchor=(0.5, 1.01),
+            ncol=min(5, n_ser),
+            frameon=False,
+            fontsize=14.0,
+            handlelength=1.2,
+            columnspacing=1.0,
+        )
+
+
+def _plot_nature_step_drop_zoom(fig: plt.Figure, palette: ScientificPalette, data: Dict[str, Any]) -> None:
+    """Image-1 Nature waterfall step-drop chart with dashed connector steps & zoomed inset panel."""
+    ax = fig.add_axes([0.13, 0.16, 0.82, 0.74])
+    _style_origin_axes(ax, palette.ink)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.tick_params(top=False, right=False)
+
+    categories = list(data.get("categories") or ["Baseline", "Step 1", "Step 2", "Step 3", "Final A", "Final B"])
+    values = [float(v) for v in (data.get("values") or [41.0, 32.5, 13.7, 5.9, 0.50, 0.14])]
+    errors = [float(e) for e in (data.get("errors") or [v * 0.10 for v in values])]
+    drops = list(data.get("drop_labels") or ["-20.7%", "-57.8%", "-56.9%", "-91.5%", "-72.0%"])
+
+    n = len(values)
+    x = np.arange(n, dtype=float)
+    bar_cols = [palette.s1, palette.s2, palette.s3, palette.alert, palette.s4, palette.s5]
+    colors = [bar_cols[i % len(bar_cols)] for i in range(n)]
+
+    ax.bar(x, values, width=0.52, color=colors, edgecolor=palette.ink, linewidth=0.9, zorder=3)
+    ax.errorbar(x, values, yerr=errors, fmt="none", ecolor=palette.ink, elinewidth=1.0, capsize=3.0, zorder=4)
+
+    for i in range(n - 1):
+        ax.plot([x[i], x[i + 1]], [values[i], values[i]], "--", color=palette.ink, lw=1.1, zorder=4)
+        if values[i] > values[i + 1] and i < len(drops):
+            ax.annotate("", xy=(x[i + 1], values[i + 1] + errors[i + 1] + 0.5), xytext=(x[i + 1], values[i]),
+                        arrowprops=dict(arrowstyle="-|>", color=palette.ink, lw=1.2), zorder=5)
+            ax.text(x[i + 1] + 0.08, 0.5 * (values[i] + values[i + 1]), str(drops[i]), fontsize=14.0, fontweight="bold", color=palette.ink, va="center")
+
+    ax.set_xticks(x)
+    ax.set_xticklabels([str(c)[:12] for c in categories], fontsize=14.0, color=palette.ink)
+    ax.set_ylim(0, max(values) * 1.24 if values else 50)
+    ax.set_ylabel(str(data.get("ylabel", "Target Burden / Value")), fontsize=14.0, fontweight="bold", color=palette.ink)
+    panel_lbl = str(data.get("panel_label", "a")).strip()
+    if panel_lbl:
+        ax.text(-0.10, 1.05, panel_lbl, transform=ax.transAxes, fontsize=16.0, fontweight="bold", color=palette.ink)
+
+    # Inset zoom on last two small bars if dramatically smaller than max
+    if n >= 5 and max(values[-2:]) < max(values) * 0.25:
+        ax_in = fig.add_axes([0.56, 0.50, 0.36, 0.36])
+        _style_origin_axes(ax_in, palette.ink)
+        sub_x = np.arange(2, dtype=float)
+        ax_in.bar(sub_x, values[-2:], width=0.45, color=colors[-2:], edgecolor=palette.ink, lw=0.85, zorder=3)
+        ax_in.errorbar(sub_x, values[-2:], yerr=errors[-2:], fmt="none", ecolor=palette.ink, elinewidth=0.9, capsize=2.5, zorder=4)
+        ax_in.set_xticks(sub_x)
+        ax_in.set_xticklabels([str(c)[:10] for c in categories[-2:]], fontsize=14.0)
+        ax_in.set_ylim(0, max(values[-2:]) * 1.6 + 0.05)
+
+
+def _plot_nature_horizontal_ranked(fig: plt.Figure, palette: ScientificPalette, data: Dict[str, Any]) -> None:
+    """Image-1 Nature horizontal ranked bar chart with significance stars (*..****)."""
+    ax = fig.add_axes([0.30, 0.16, 0.64, 0.74])
+    _style_origin_axes(ax, palette.ink)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.tick_params(top=False, right=False)
+
+    labels = list(data.get("labels") or ["Control", "Analog A", "Analog B", "Analog C", "YJ-402"])
+    values = [float(v) for v in (data.get("values") or [12.0, 28.0, 46.0, 69.0, 92.0])]
+    errors = [float(e) for e in (data.get("errors") or [v * 0.08 for v in values])]
+    stars = list(data.get("stars") or ["ns", "*", "**", "***", "****"])
+
+    y = np.arange(len(labels), dtype=float)
+    bar_cols = [blend_with_white(palette.s1, 0.45)] * max(0, len(labels) - 1) + [palette.s1]
+    ax.barh(y, values, height=0.60, color=bar_cols, edgecolor=palette.ink, linewidth=0.85, zorder=3)
+    ax.errorbar(values, y, xerr=errors, fmt="none", ecolor=palette.ink, elinewidth=1.0, capsize=3.0, zorder=4)
+
+    for idx, (val, err) in enumerate(zip(values, errors)):
+        st = str(stars[idx]) if idx < len(stars) else ""
+        if st:
+            ax.text(val + err + max(values) * 0.02, y[idx], st, va="center", ha="left", fontsize=14.0, fontweight="bold", color=palette.alert if "*" in st else palette.muted)
+
+    ax.set_yticks(y)
+    ax.set_yticklabels([str(l)[:18] for l in labels], fontsize=14.0, color=palette.ink)
+    ax.set_xlim(0, max(values) * 1.24 if values else 100)
+    ax.set_xlabel(str(data.get("xlabel", "Activity / Inhibition (%)")), fontsize=14.0, fontweight="bold", color=palette.ink)
+    panel_lbl = str(data.get("panel_label", "a")).strip()
+    if panel_lbl:
+        ax.text(-0.34, 1.04, panel_lbl, transform=ax.transAxes, fontsize=16.0, fontweight="bold", color=palette.ink)
+
+
+def export_plot_data_csv(plot_data: Dict[str, Any], output_csv: Path | str) -> Optional[Path]:
+    """Export real chart series/categories to UTF-8 CSV for downstream OriginPro refinement."""
+    if not plot_data:
+        return None
+    import csv
+
+    out_p = Path(output_csv)
+    out_p.parent.mkdir(parents=True, exist_ok=True)
+    cats = plot_data.get("categories") or plot_data.get("labels")
+    series = plot_data.get("series")
+    values = plot_data.get("values")
+
+    rows: List[List[Any]] = []
+    if isinstance(cats, list) and isinstance(series, list) and series:
+        header = ["Category"] + [str(s.get("name", f"Series_{i+1}")) for i, s in enumerate(series)]
+        rows.append(header)
+        for idx, cat in enumerate(cats):
+            row = [cat]
+            for ser in series:
+                vals = ser.get("values") or []
+                row.append(vals[idx] if idx < len(vals) else "")
+            rows.append(row)
+    elif isinstance(cats, list) and isinstance(values, list):
+        rows.append(["Label", str(plot_data.get("ylabel") or plot_data.get("xlabel") or "Value")])
+        for c, v in zip(cats, values):
+            rows.append([c, v])
+    else:
+        return None
+
+    with out_p.open("w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerows(rows)
+    return out_p
+
+
 PRESET_DISPATCH = {
     "kinetics_spline": _plot_kinetics_spline,
     "paired_gain_bar": _plot_paired_gain_bar,
@@ -567,6 +774,9 @@ PRESET_DISPATCH = {
     "dft_slab_bader_link": _plot_dft_slab_bader_link,
     "ml_parity_kde": _plot_ml_parity_kde,
     "benchmark_scatter": _plot_benchmark_scatter,
+    "nature_grouped_bar": _plot_nature_grouped_bar,
+    "nature_step_drop_zoom": _plot_nature_step_drop_zoom,
+    "nature_horizontal_ranked": _plot_nature_horizontal_ranked,
 }
 
 

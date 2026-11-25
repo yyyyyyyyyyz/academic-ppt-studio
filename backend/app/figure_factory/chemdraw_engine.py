@@ -21,6 +21,7 @@ from rdkit import Chem
 from rdkit.Chem import AllChem
 from rdkit.Chem.Draw import rdMolDraw2D
 
+from .chem_grounding import export_mol_to_cdxml, resolve_compound_smiles
 from .palettes import ScientificPalette, blend_with_white, get_palette, hex_to_rgb, hex_to_rgb_norm
 
 
@@ -35,6 +36,7 @@ class ChemDrawRenderResult:
     physical_height_in: float
     bond_length_px_1x: float
     atom_count: int
+    cdxml_path: Optional[Path] = None
 
 
 def _apply_acs1996_options(
@@ -54,6 +56,10 @@ def _apply_acs1996_options(
     opts.fixedBondLength = float(fixed_bond_len_px * supersample)
     if style == "nature_burgundy":
         opts.bondLineWidth = float(2.75 * supersample)
+    elif style == "jacs_terracotta":
+        opts.bondLineWidth = float(2.55 * supersample)
+    elif style == "reactive_spot":
+        opts.bondLineWidth = float(2.45 * supersample)
     elif style == "minimal_mono":
         opts.bondLineWidth = float(1.80 * supersample)
     elif style == "shaded_scaffold":
@@ -73,6 +79,16 @@ def _apply_acs1996_options(
         n_rgb = hex_to_rgb_norm("#1F4E78")
         alert_rgb = hex_to_rgb_norm("#B5121B")
         s_rgb = hex_to_rgb_norm("#9A6B16")
+    elif style == "jacs_terracotta":
+        c_rgb = hex_to_rgb_norm("#9E2F1E")
+        n_rgb = c_rgb
+        alert_rgb = c_rgb
+        s_rgb = c_rgb
+    elif style == "reactive_spot":
+        c_rgb = hex_to_rgb_norm("#6B1D57")
+        n_rgb = hex_to_rgb_norm("#1E3A8A")
+        alert_rgb = hex_to_rgb_norm("#6B1D57")
+        s_rgb = hex_to_rgb_norm("#9A3412")
     elif style == "minimal_mono":
         c_rgb = hex_to_rgb_norm("#1E1E1E")
         n_rgb = c_rgb
@@ -278,7 +294,8 @@ def render_molecule(
     style = (chem_style or ("nature_burgundy" if drug_burgundy else "acs1996")).strip().lower()
     if style == "acs1996" and drug_burgundy:
         style = "nature_burgundy"
-    mol = _prepare_molecule(smiles)
+    resolved_smiles = resolve_compound_smiles(smiles) or smiles
+    mol = _prepare_molecule(resolved_smiles)
     canvas_w, canvas_h = _estimate_canvas_size(mol, fixed_bond_length_px, supersample)
 
     drawer = rdMolDraw2D.MolDraw2DCairo(canvas_w, canvas_h)
@@ -349,18 +366,26 @@ def render_molecule(
             groups_spec.append((pts_g, h_hex, r_hex))
             group_atom_sets.append((set(idxs), h_hex, r_hex))
     else:
+        effective_hl_atoms = list(highlight_atoms or [])
+        if style == "reactive_spot" and not effective_hl_atoms and not highlight_bonds and not highlight_rings:
+            # Highlight reactive heteroatom/carbonyl center with crisp blue spotlight badge (Image 4 panel f)
+            het = [a.GetIdx() for a in mol.GetAtoms() if a.GetAtomicNum() in (7, 8, 16, 15)]
+            effective_hl_atoms = [het[0]] if het else ([0] if mol.GetNumAtoms() > 0 else [])
         centers = _resolve_halo_centers(
             mol=mol,
             drawer=drawer,
-            highlight_atoms=highlight_atoms or [],
+            highlight_atoms=effective_hl_atoms,
             highlight_bonds=highlight_bonds or [],
             highlight_rings=highlight_rings,
         )
         if centers:
             h_hex, r_hex = _halo_colors(highlight_halo_token)
+            if style == "reactive_spot":
+                h_hex = "#3182CE"
+                r_hex = "#1E40AF"
             groups_spec.append((centers, h_hex, r_hex))
-            if highlight_atoms:
-                group_atom_sets.append((set(int(i) for i in highlight_atoms), h_hex, r_hex))
+            if effective_hl_atoms:
+                group_atom_sets.append((set(int(i) for i in effective_hl_atoms), h_hex, r_hex))
 
     halo_img = _render_halo_layer(
         width=mol_img.width,
@@ -373,6 +398,18 @@ def render_molecule(
         group_atom_sets=group_atom_sets,
         chem_style=style,
     )
+    if style == "reactive_spot" and groups_spec:
+        spot_overlay = Image.new("RGBA", halo_img.size, (0, 0, 0, 0))
+        sdraw = ImageDraw.Draw(spot_overlay)
+        r_spot = max(8, int(round(fixed_bond_length_px * supersample * 0.42)))
+        for cx_s, cy_s in groups_spec[0][0][:2]:
+            sdraw.ellipse(
+                [cx_s - r_spot, cy_s - r_spot, cx_s + r_spot, cy_s + r_spot],
+                fill=(43, 108, 176, 130),
+                outline=(30, 64, 175, 220),
+                width=max(2, supersample),
+            )
+        halo_img = Image.alpha_composite(halo_img, spot_overlay)
 
     combined = Image.alpha_composite(halo_img, mol_img)
 
@@ -409,6 +446,9 @@ def render_molecule(
         svg_written.parent.mkdir(parents=True, exist_ok=True)
         svg_written.write_text(svg_drawer.GetDrawingText(), encoding="utf-8")
 
+    cdxml_color = "#7F1D1D" if style == "nature_burgundy" else ("#9E2F1E" if style == "jacs_terracotta" else "#000000")
+    cdxml_written = export_mol_to_cdxml(resolved_smiles, out_png.with_suffix(".cdxml"), color_hex=cdxml_color)
+
     # Lock physical inch conversion solely by fixed_bond_length_px (0.28 in per standard bond)
     px_per_in = float(fixed_bond_length_px * supersample) / 0.28
     phys_w = round(combined.width / px_per_in, 3)
@@ -417,11 +457,12 @@ def render_molecule(
     return ChemDrawRenderResult(
         png_path=out_png,
         svg_path=svg_written,
-        smiles=smiles,
+        smiles=resolved_smiles,
         pixel_width=combined.width,
         pixel_height=combined.height,
         physical_width_in=phys_w,
         physical_height_in=phys_h,
         bond_length_px_1x=float(fixed_bond_length_px),
         atom_count=mol.GetNumAtoms(),
+        cdxml_path=cdxml_written,
     )

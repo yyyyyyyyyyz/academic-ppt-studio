@@ -39,6 +39,7 @@ from .agents.qa_agent import SlideVisualQAAgent
 from .billing import BillingError, BillingStore, default_billing_db_path
 from .builder.word_sync import sync_word_into_pptx
 from .config import Settings, get_settings
+from .figure_factory.chem_grounding import resolve_compound_smiles
 from .figure_factory.factory import ScientificFigureFactory
 from .figure_factory.palettes import list_palettes
 from .providers.llm_image_provider import ModelProvider, settings_from_request_headers
@@ -535,25 +536,33 @@ async def api_plan_upload(
     return _run_plan(req, request, parsed_doc=parsed_doc, deck_id=deck_id)
 
 
+def _asset_url_entry(asset: FigureAsset) -> Dict[str, object]:
+    return {
+        "png_url": _to_artifact_url(asset.png_path),
+        "svg_url": _to_artifact_url(asset.svg_path),
+        "cdxml_url": _to_artifact_url(asset.cdxml_path),
+        "sdf_url": _to_artifact_url(asset.sdf_path),
+        "csv_url": _to_artifact_url(asset.csv_path),
+        "candidates": [
+            {
+                "candidate_id": c.candidate_id,
+                "png_url": _to_artifact_url(c.png_path),
+                "ocr_text_count": c.ocr_text_count,
+                "vlm_aesthetic_score": c.vlm_aesthetic_score,
+                "passed": c.passed,
+            }
+            for c in asset.candidates
+        ],
+    }
+
+
 def _collect_asset_urls(deck: DeckSpec) -> Dict[str, object]:
     urls: Dict[str, object] = {}
     for sl in deck.slides:
         if not sl.figure_spec:
             continue
         for asset in sl.figure_spec.assets:
-            urls[asset.asset_id] = {
-                "png_url": _to_artifact_url(asset.png_path),
-                "candidates": [
-                    {
-                        "candidate_id": c.candidate_id,
-                        "png_url": _to_artifact_url(c.png_path),
-                        "ocr_text_count": c.ocr_text_count,
-                        "vlm_aesthetic_score": c.vlm_aesthetic_score,
-                        "passed": c.passed,
-                    }
-                    for c in asset.candidates
-                ],
-            }
+            urls[asset.asset_id] = _asset_url_entry(asset)
     return urls
 
 
@@ -572,35 +581,26 @@ def api_figures_generate(req: GenerateFigureRequest, request: Request) -> Dict[s
     )
     return {
         "figure_spec": res_spec.model_dump(),
-        "asset_urls": {
-            a.asset_id: {
-                "png_url": _to_artifact_url(a.png_path),
-                "candidates": [
-                    {
-                        "candidate_id": c.candidate_id,
-                        "png_url": _to_artifact_url(c.png_path),
-                        "ocr_text_count": c.ocr_text_count,
-                        "vlm_aesthetic_score": c.vlm_aesthetic_score,
-                        "passed": c.passed,
-                    }
-                    for c in a.candidates
-                ],
-            }
-            for a in res_spec.assets
-        },
+        "asset_urls": {a.asset_id: _asset_url_entry(a) for a in res_spec.assets},
     }
 
 
 @app.post("/api/figures/select-or-refine")
 def api_figures_select_or_refine(req: SelectOrRefineFigureRequest, request: Request) -> Dict[str, object]:
     fspec = req.figure_spec
+    resolved_smiles = (
+        resolve_compound_smiles(req.smiles_override, allow_pubchem=True) or req.smiles_override
+        if req.smiles_override
+        else None
+    )
     if req.archetype_override and req.archetype_override != fspec.archetype:
+        base_smiles = resolved_smiles or next((a.smiles for a in fspec.assets if a.smiles), None)
         fspec = build_default_figure_spec(
             archetype=req.archetype_override,
             slide_no=req.slide_no,
             palette_id=req.palette_id,
             box_in=fspec.box_in,
-            smiles=req.smiles_override,
+            smiles=base_smiles,
             origin_preset=req.origin_preset,
         )
 
@@ -613,15 +613,18 @@ def api_figures_select_or_refine(req: SelectOrRefineFigureRequest, request: Requ
             asset.png_path = cand.png_path
             return {
                 "figure_spec": fspec.model_dump(),
-                "asset_urls": {asset.asset_id: {"png_url": _to_artifact_url(asset.png_path)}},
+                "asset_urls": {asset.asset_id: _asset_url_entry(asset)},
             }
 
-        if req.smiles_override:
-            asset.smiles = req.smiles_override
+        if resolved_smiles:
+            asset.smiles = resolved_smiles
         if req.fixed_bond_length_px is not None:
             asset.fixed_bond_length_px = req.fixed_bond_length_px
         if req.highlight_atoms is not None:
             asset.highlight_atoms = req.highlight_atoms
+        if req.chem_style_override:
+            asset.chem_style = req.chem_style_override
+            asset.drug_burgundy = req.chem_style_override == "nature_burgundy"
         if req.origin_preset:
             asset.preset = req.origin_preset
         if req.render_mode:
@@ -639,22 +642,7 @@ def api_figures_select_or_refine(req: SelectOrRefineFigureRequest, request: Requ
     )
     return {
         "figure_spec": updated.model_dump(),
-        "asset_urls": {
-            a.asset_id: {
-                "png_url": _to_artifact_url(a.png_path),
-                "candidates": [
-                    {
-                        "candidate_id": c.candidate_id,
-                        "png_url": _to_artifact_url(c.png_path),
-                        "ocr_text_count": c.ocr_text_count,
-                        "vlm_aesthetic_score": c.vlm_aesthetic_score,
-                        "passed": c.passed,
-                    }
-                    for c in a.candidates
-                ],
-            }
-            for a in updated.assets
-        },
+        "asset_urls": {a.asset_id: _asset_url_entry(a) for a in updated.assets},
     }
 
 

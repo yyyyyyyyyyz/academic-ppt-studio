@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import { Wand2, RefreshCw, Upload, Check, Sparkles } from "lucide-react";
+import { Wand2, RefreshCw, Upload, Check, Sparkles, Download } from "lucide-react";
 import type {
   ArchetypeId,
   ArchetypeInfo,
@@ -25,11 +25,24 @@ interface FigureWorkbenchProps {
     fixed_bond_length_px?: number;
     origin_preset?: string;
     render_mode?: string;
+    chem_style_override?: string;
   }) => Promise<void>;
   onUploadReplacement: (file: File, assetId: string) => Promise<void>;
 }
 
+const CHEM_STYLES = [
+  { id: "acs1996", label: "ACS 1996 经典出版风" },
+  { id: "nature_burgundy", label: "Nature 绛红手绘风" },
+  { id: "shaded_scaffold", label: "药效团环填色风" },
+  { id: "jacs_terracotta", label: "JACS 砖红发表风" },
+  { id: "reactive_spot", label: "反应位点蓝斑高亮" },
+  { id: "minimal_mono", label: "极简纯黑线稿风" },
+];
+
 const ORIGIN_PRESETS = [
+  { id: "nature_grouped_bar", label: "Nature 分组柱图 + Tukey 字母 / P 值" },
+  { id: "nature_step_drop_zoom", label: "Nature 阶梯下降瀑布 + 局部放大" },
+  { id: "nature_horizontal_ranked", label: "Nature 横向排序柱图 + 显著性星号" },
   { id: "kinetics_spline", label: "动力学平滑样条 + 直标" },
   { id: "paired_gain_bar", label: "斜线对照柱图 + 增幅胶囊" },
   { id: "electrochem_suite", label: "电化学 LSV / Tafel / 稳定性 4 联" },
@@ -166,6 +179,30 @@ export const FigureWorkbench: React.FC<FigureWorkbenchProps> = ({
               <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>暂无独立预览图元</span>
             )}
           </div>
+          {(bundle?.cdxml_url || bundle?.sdf_url || bundle?.svg_url || bundle?.csv_url) && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+              {bundle.cdxml_url && (
+                <a className="btn-editorial-ghost font-mono" style={{ padding: "3px 8px", fontSize: 11, textDecoration: "none" }} href={bundle.cdxml_url} download>
+                  <Download size={11} /> .cdxml
+                </a>
+              )}
+              {bundle.sdf_url && (
+                <a className="btn-editorial-ghost font-mono" style={{ padding: "3px 8px", fontSize: 11, textDecoration: "none" }} href={bundle.sdf_url} download>
+                  <Download size={11} /> .sdf (PyMOL)
+                </a>
+              )}
+              {bundle.svg_url && (
+                <a className="btn-editorial-ghost font-mono" style={{ padding: "3px 8px", fontSize: 11, textDecoration: "none" }} href={bundle.svg_url} download>
+                  <Download size={11} /> .svg
+                </a>
+              )}
+              {bundle.csv_url && (
+                <a className="btn-editorial-ghost font-mono" style={{ padding: "3px 8px", fontSize: 11, textDecoration: "none" }} href={bundle.csv_url} download>
+                  <Download size={11} /> .csv (Origin)
+                </a>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Archetype A01-A10 Selector */}
@@ -200,34 +237,105 @@ export const FigureWorkbench: React.FC<FigureWorkbenchProps> = ({
               gap: 10,
             }}
           >
-            <div className="kicker" style={{ color: "var(--oxford-navy)" }}>
-              {primaryAsset.engine === "chemdraw_rdkit" ? "CHEMDRAW ACS 1996 PARAMETERS" : "CYLVIEW 3D CONFORMER"}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+              <div className="kicker" style={{ color: "var(--oxford-navy)" }}>
+                {primaryAsset.engine === "chemdraw_rdkit" ? "CHEMDRAW 2D · ACS 1996" : "PYMOL / CYLVIEW 3D"}
+              </div>
+              <div style={{ display: "flex", gap: 4 }}>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    onRefineOrSwitch({
+                      archetype_override: "A05_chemdraw_halo",
+                      smiles_override: smilesInput || primaryAsset.smiles || undefined,
+                    })
+                  }
+                  style={{
+                    padding: "2px 8px",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    borderRadius: 2,
+                    cursor: "pointer",
+                    border: "1px solid var(--nature-crimson)",
+                    background: primaryAsset.engine === "chemdraw_rdkit" ? "var(--nature-crimson)" : "#FFFFFF",
+                    color: primaryAsset.engine === "chemdraw_rdkit" ? "#FFFFFF" : "var(--nature-crimson)",
+                  }}
+                >
+                  2D 结构式
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    onRefineOrSwitch({
+                      archetype_override: "A04_cylview_3d",
+                      smiles_override: smilesInput || primaryAsset.smiles || undefined,
+                    })
+                  }
+                  style={{
+                    padding: "2px 8px",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    borderRadius: 2,
+                    cursor: "pointer",
+                    border: "1px solid var(--oxford-navy)",
+                    background: primaryAsset.engine === "cylview_3d" ? "var(--oxford-navy)" : "#FFFFFF",
+                    color: primaryAsset.engine === "cylview_3d" ? "#FFFFFF" : "var(--oxford-navy)",
+                  }}
+                >
+                  3D 球棍
+                </button>
+              </div>
             </div>
             <label style={{ fontSize: 12 }}>
-              <span style={{ color: "var(--ink-secondary)", fontWeight: 600 }}>分子 SMILES</span>
+              <span style={{ color: "var(--ink-secondary)", fontWeight: 600 }}>药名 / SMILES（支持自动检索）</span>
               <input
                 className="editorial-input font-mono"
-                placeholder={primaryAsset.smiles || "CN(C)CCN(Cc1ccccc1)c2ccccn2"}
+                placeholder={primaryAsset.smiles || "如 Osimertinib / 青蒿素 或 SMILES"}
                 value={smilesInput}
                 onChange={(e) => setSmilesInput(e.target.value)}
                 style={{ marginTop: 4, fontSize: 11.5 }}
               />
             </label>
             {primaryAsset.engine === "chemdraw_rdkit" && (
-              <label style={{ fontSize: 12 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", color: "var(--ink-secondary)", fontWeight: 600 }}>
-                  <span>全局物理键长锁定</span>
-                  <span className="font-mono" style={{ color: "var(--nature-crimson)" }}>{bondLen} px</span>
-                </div>
-                <input
-                  type="range"
-                  min={20}
-                  max={42}
-                  value={bondLen}
-                  onChange={(e) => setBondLen(Number(e.target.value))}
-                  style={{ width: "100%", marginTop: 4, accentColor: "var(--nature-crimson)" }}
-                />
-              </label>
+              <>
+                <label style={{ fontSize: 12 }}>
+                  <span style={{ color: "var(--ink-secondary)", fontWeight: 600 }}>ChemDraw 发表画风</span>
+                  <select
+                    className="editorial-select"
+                    value={primaryAsset.chem_style || "acs1996"}
+                    disabled={busy}
+                    onChange={(e) =>
+                      onRefineOrSwitch({
+                        asset_id: primaryAsset.asset_id,
+                        chem_style_override: e.target.value,
+                      })
+                    }
+                    style={{ marginTop: 4 }}
+                  >
+                    {CHEM_STYLES.map((cs) => (
+                      <option key={cs.id} value={cs.id}>
+                        {cs.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label style={{ fontSize: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", color: "var(--ink-secondary)", fontWeight: 600 }}>
+                    <span>全局物理键长锁定</span>
+                    <span className="font-mono" style={{ color: "var(--nature-crimson)" }}>{bondLen} px</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={20}
+                    max={42}
+                    value={bondLen}
+                    onChange={(e) => setBondLen(Number(e.target.value))}
+                    style={{ width: "100%", marginTop: 4, accentColor: "var(--nature-crimson)" }}
+                  />
+                </label>
+              </>
             )}
             <button
               type="button"

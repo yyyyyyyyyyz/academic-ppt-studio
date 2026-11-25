@@ -17,7 +17,7 @@ from ..schemas.deck_spec import (
 from ..agents.figure_critic_agent import FigureCriticAgent
 from .chemdraw_engine import render_molecule
 from .cylview3d_engine import render_cylview3d
-from .origin_engine import render_origin_plot
+from .origin_engine import export_plot_data_csv, render_origin_plot
 from .sci3d_art_engine import generate_sci3d_candidates
 from .vector_mech import render_vector_mechanism
 
@@ -106,6 +106,8 @@ class ScientificFigureFactory:
             )
             asset.png_path = str(res.png_path)
             asset.svg_path = str(res.svg_path) if res.svg_path else None
+            asset.cdxml_path = str(res.cdxml_path) if res.cdxml_path else None
+            asset.smiles = res.smiles
             asset.physical_width_in = res.physical_width_in
             asset.physical_height_in = res.physical_height_in
             asset.candidates = [AssetCandidate(candidate_id="cand_0", png_path=asset.png_path, vlm_aesthetic_score=9.3, passed=True)]
@@ -124,6 +126,8 @@ class ScientificFigureFactory:
                 show_nonpolar_h=asset.show_nonpolar_h,
             )
             asset.png_path = str(res.png_path)
+            asset.sdf_path = str(res.sdf_path) if res.sdf_path else None
+            asset.smiles = res.smiles
             asset.candidates = [AssetCandidate(candidate_id="cand_0", png_path=asset.png_path, vlm_aesthetic_score=9.4, passed=True)]
             asset.selected_candidate_idx = 0
             asset.qa_result = self.critic.evaluate_asset(asset, palette_id=palette_id, is_proposal=is_proposal, rounds_run=1)
@@ -147,6 +151,8 @@ class ScientificFigureFactory:
                 ea_font=(fonts or {}).get("ea", "微软雅黑"),
             )
             asset.png_path = str(png_p)
+            csv_p = export_plot_data_csv(asset.plot_data, png_p.with_suffix(".csv"))
+            asset.csv_path = str(csv_p) if csv_p else None
             asset.physical_width_in = phys_w
             asset.physical_height_in = phys_h
             asset.candidates = [AssetCandidate(candidate_id="cand_0", png_path=asset.png_path, vlm_aesthetic_score=9.3, passed=True)]
@@ -170,6 +176,8 @@ class ScientificFigureFactory:
                 dpi=300,
             )
             asset.png_path = str(png_p)
+            csv_p = export_plot_data_csv(asset.plot_data, png_p.with_suffix(".csv"))
+            asset.csv_path = str(csv_p) if csv_p else None
             asset.physical_width_in = phys_w
             asset.physical_height_in = phys_h
             asset.candidates = [AssetCandidate(candidate_id="cand_0", png_path=asset.png_path, vlm_aesthetic_score=9.2, passed=True)]

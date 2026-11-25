@@ -6,7 +6,9 @@ from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
 import re
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
+from ..figure_factory.chem_grounding import extract_compounds_from_text
 
 
 @dataclass
@@ -117,9 +119,56 @@ def extract_section_metrics(text: str, limit: int = 4) -> List[Tuple[str, str]]:
 def _finalize_section(sec: ParsedSection) -> ParsedSection:
     joined = "\n".join(sec.paragraphs) if sec.paragraphs else sec.content
     sec.content = joined.strip()
-    sec.smiles = _SMILES_EXTRACT_PAT.findall(sec.content)
+    explicit_smiles = _SMILES_EXTRACT_PAT.findall(sec.content)
+    grounded_pairs = extract_compounds_from_text(f"{sec.heading}\n{sec.content}")
+    ordered_smiles: List[str] = []
+    for smi in explicit_smiles + [s for _, s in grounded_pairs]:
+        if smi and smi not in ordered_smiles:
+            ordered_smiles.append(smi)
+    sec.smiles = ordered_smiles
     sec.metrics = extract_section_metrics(sec.content)
     return sec
+
+
+def extract_chart_data_from_table(table: ParsedTable, heading: str = "") -> Optional[Dict[str, Any]]:
+    """Extract numeric series from a real Word ParsedTable into Nature/Origin grouped-bar plot_data."""
+    if not table.headers or not table.rows or len(table.headers) < 2:
+        return None
+    categories: List[str] = [str(r[0])[:16] for r in table.rows if r and r[0].strip()]
+    if len(categories) < 2:
+        return None
+
+    num_pat = re.compile(r"(-?\d+(?:\.\d+)?)")
+    series: List[Dict[str, Any]] = []
+    unit_hint = ""
+    for col_idx in range(1, min(len(table.headers), 5)):
+        col_vals: List[float] = []
+        valid_nums = 0
+        for r in table.rows[: len(categories)]:
+            cell = r[col_idx] if col_idx < len(r) else ""
+            m = num_pat.search(cell)
+            if m:
+                col_vals.append(float(m.group(1)))
+                valid_nums += 1
+                if not unit_hint:
+                    u_m = re.search(r"(nM|μM|%|h|倍|mg/kg|kcal/mol)", cell)
+                    if u_m:
+                        unit_hint = u_m.group(1)
+            else:
+                col_vals.append(0.0)
+        if valid_nums >= max(2, len(categories) // 2):
+            series.append({"name": str(table.headers[col_idx])[:18], "values": col_vals})
+
+    if not series:
+        return None
+
+    ylabel = f"{series[0]['name']} ({unit_hint})" if len(series) == 1 and unit_hint else (heading[:20] or f"Measured Value ({unit_hint or 'unit'})")
+    return {
+        "categories": categories,
+        "series": series,
+        "ylabel": ylabel,
+        "panel_label": "a",
+    }
 
 
 def parse_file_to_text(file_path: Path | str) -> str:
@@ -330,7 +379,11 @@ def parse_scientific_text(text: str, default_title: str = "学术研究工作汇
         for i, ch in enumerate(chunks[:6]):
             sections.append(_finalize_section(ParsedSection(heading=default_heads[i % len(default_heads)], content=ch, paragraphs=[ch])))
 
-    smiles_matches = _SMILES_EXTRACT_PAT.findall(raw)
+    smiles_matches: List[str] = []
+    for sec in sections:
+        for s in sec.smiles:
+            if s not in smiles_matches:
+                smiles_matches.append(s)
     lower_raw = raw.lower()
     is_prop = any(h in lower_raw for h in _PROPOSAL_HINTS)
 
